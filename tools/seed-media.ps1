@@ -26,12 +26,10 @@ $repoRoot = Split-Path (Split-Path $PSCommandPath -Parent) -Parent
 function Find-Adb {
     $found = Get-Command adb -ErrorAction SilentlyContinue
     if ($found) { return $found.Source }
-    $candidates = @(
-        (Join-Path $env:ANDROID_HOME 'platform-tools\adb.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Android\sdk\platform-tools\adb.exe')
-    )
-    foreach ($candidate in $candidates) {
-        if ($candidate -and (Test-Path $candidate)) { return $candidate }
+    foreach ($base in @($env:ANDROID_HOME, $env:ANDROID_SDK_ROOT, (Join-Path $env:LOCALAPPDATA 'Android\sdk'))) {
+        if (-not $base) { continue }
+        $candidate = Join-Path $base 'platform-tools\adb.exe'
+        if (Test-Path $candidate) { return $candidate }
     }
     throw 'adb not found. Install Android platform-tools or set ANDROID_HOME.'
 }
