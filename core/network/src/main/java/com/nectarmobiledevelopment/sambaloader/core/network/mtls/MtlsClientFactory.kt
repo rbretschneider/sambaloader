@@ -20,11 +20,26 @@ class MtlsClientFactory @Inject constructor() {
         caCertificate: X509Certificate,
     ): OkHttpClient {
         require(certificateChain.isNotEmpty()) { "certificateChain must not be empty" }
-
         val keyManager = DeviceKeyManager(privateKey, certificateChain.toTypedArray())
+        return build(arrayOf(keyManager), caCertificate)
+    }
+
+    /**
+     * Client for the enrollment endpoints (SERVER_SPEC §7.4/§7.5): the
+     * device has no certificate yet, but still trusts ONLY the CA pinned
+     * from the QR payload — never the platform store.
+     */
+    fun createWithoutClientIdentity(caCertificate: X509Certificate): OkHttpClient {
+        return build(keyManagers = null, caCertificate = caCertificate)
+    }
+
+    private fun build(
+        keyManagers: Array<javax.net.ssl.KeyManager>?,
+        caCertificate: X509Certificate,
+    ): OkHttpClient {
         val trustManager = PrivateCaTrust.trustManagerFor(caCertificate)
         val sslContext = SSLContext.getInstance(TLS_PROTOCOL).apply {
-            init(arrayOf(keyManager), arrayOf(trustManager), null)
+            init(keyManagers, arrayOf(trustManager), null)
         }
 
         return OkHttpClient.Builder()

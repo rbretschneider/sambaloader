@@ -9,6 +9,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":core:crypto"))
     implementation(libs.okhttp)
     implementation(libs.gson)
     implementation(libs.kotlinx.coroutines.core)
