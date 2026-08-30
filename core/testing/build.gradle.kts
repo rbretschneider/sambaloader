@@ -8,5 +8,7 @@ android {
 
 dependencies {
     implementation(project(":core:crypto"))
+    api(project(":core:network"))
     implementation(libs.gson)
+    api(libs.okhttp.tls)
 }
