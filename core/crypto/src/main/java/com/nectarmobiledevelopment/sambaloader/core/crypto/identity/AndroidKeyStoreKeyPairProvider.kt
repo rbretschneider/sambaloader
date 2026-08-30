@@ -70,7 +70,11 @@ class AndroidKeyStoreKeyPairProvider @Inject constructor(
             KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
         )
             .setAlgorithmParameterSpec(ECGenParameterSpec(EC_CURVE))
-            .setDigests(KeyProperties.DIGEST_SHA256)
+            // DIGEST_NONE is required for TLS: Conscrypt hashes the
+            // handshake transcript itself and requests a raw keystore
+            // signature. Without it every mTLS handshake dies with
+            // INCOMPATIBLE_DIGEST. SHA256 stays for CSR signing.
+            .setDigests(KeyProperties.DIGEST_NONE, KeyProperties.DIGEST_SHA256)
             .setUserAuthenticationRequired(false)
             .apply {
                 if (useStrongBox && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
