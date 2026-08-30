@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Static analysis
+        run: ./gradlew detekt
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Coverage gate (80% on :sync, :core:data, :core:crypto)
+        run: ./gradlew koverVerify koverXmlReport
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Upload test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            **/build/reports/tests/**
+            build/reports/kover/**
+          retention-days: 14
+
+  # Testcontainers integration (M5) and instrumented emulator tests (M5/M7)
+  # get their own pull-request jobs when those milestones land.
