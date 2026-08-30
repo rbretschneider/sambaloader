@@ -2,7 +2,9 @@ package com.nectarmobiledevelopment.sambaloader.ui.home
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -14,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nectarmobiledevelopment.sambaloader.BuildConfig
+import com.nectarmobiledevelopment.sambaloader.ui.debug.DebugIdentitySection
 
 @Composable
 fun HomeScreen(viewModel: HomeViewModel = hiltViewModel()) {
@@ -39,6 +43,10 @@ fun HomeScreen(viewModel: HomeViewModel = hiltViewModel()) {
                 text = "v${uiState.appVersion}",
                 style = MaterialTheme.typography.bodySmall,
             )
+            if (BuildConfig.DEBUG) {
+                Spacer(modifier = Modifier.height(32.dp))
+                DebugIdentitySection()
+            }
         }
     }
 }

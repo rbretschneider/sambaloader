@@ -34,6 +34,14 @@ android {
         buildConfig = true
     }
 
+    packaging {
+        resources {
+            // The three BouncyCastle jars each ship OSGI metadata under the
+            // same path; none of it is needed at runtime.
+            excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -46,6 +54,7 @@ android {
 
 dependencies {
     implementation(project(":core:data"))
+    implementation(project(":core:crypto"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
