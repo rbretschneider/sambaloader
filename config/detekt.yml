@@ -10,8 +10,21 @@ style:
     # standards ask for (e.g. Color(0xFF1B5E20) in a palette val).
     ignorePropertyDeclaration: true
     excludes: ['**/test/**', '**/androidTest/**']
+  ReturnCount:
+    # Guard-clause validation chains (parse/validate functions) are the
+    # house style; forcing them into nested ifs hurts readability.
+    max: 8
 
 naming:
   FunctionNaming:
     # Compose functions are PascalCase by platform convention.
     ignoreAnnotated: ['Composable']
+
+exceptions:
+  SwallowedException:
+    # Mapping a parse/validation exception to a typed domain result IS the
+    # handling; the original carries no extra signal worth logging.
+    ignoredExceptionTypes:
+      - 'JsonSyntaxException'
+      - 'CertificateException'
+      - 'NumberFormatException'
