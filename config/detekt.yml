@@ -1,0 +1,17 @@
+# Repo-wide detekt overrides. Defaults apply except where noted.
+# Keep this file small: prefer fixing code over silencing rules.
+
+style:
+  MagicNumber:
+    # Constants are still required by the house standards for meaningful
+    # values; this rule double-flags test vectors and Compose dp/sp literals.
+    ignoreAnnotated: ['Composable']
+    # A literal assigned to a named property IS the named constant the house
+    # standards ask for (e.g. Color(0xFF1B5E20) in a palette val).
+    ignorePropertyDeclaration: true
+    excludes: ['**/test/**', '**/androidTest/**']
+
+naming:
+  FunctionNaming:
+    # Compose functions are PascalCase by platform convention.
+    ignoreAnnotated: ['Composable']

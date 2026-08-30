@@ -1,0 +1,30 @@
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+.navigation/
+
+# Machine-local config
+local.properties
+
+# Signing — never commit keystores or their passwords
+*.jks
+*.keystore
+key.properties
+
+# Kotlin
+.kotlin/
+
+# Logs and OS noise
+*.log
+.DS_Store
+Thumbs.db
+
+# Dev PKI output — generated per-machine, never committed
+tools/dev-pki/out/
+devserver/ca/out/
