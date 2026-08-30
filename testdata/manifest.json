@@ -1,0 +1,37 @@
+[
+    {
+        "name":  "red_landscape.jpg",
+        "sha256":  "21173858afa159fa9da9736f9126bad52eb7c5148061d0a714c8ed29c997d158",
+        "sizeBytes":  16611,
+        "mimeType":  "image/jpeg",
+        "capturedAt":  "2024-06-15T14:23:17"
+    },
+    {
+        "name":  "green_portrait.jpg",
+        "sha256":  "d93c6a94167ea91d3216685276e9e5c8a17030beaf5e17c6d8fa0f8876ca0fe5",
+        "sizeBytes":  16141,
+        "mimeType":  "image/jpeg",
+        "capturedAt":  "2024-06-15T14:23:17"
+    },
+    {
+        "name":  "blue_large.jpg",
+        "sha256":  "a53325b255563fec9c9072928678935a0f41b01e4023f54f48a85841a0f6fb9c",
+        "sizeBytes":  44582,
+        "mimeType":  "image/jpeg",
+        "capturedAt":  "2025-01-01T00:00:01"
+    },
+    {
+        "name":  "gray_tiny.jpg",
+        "sha256":  "196a169bf0ee31824068637b718d4b3a3339eb72a9547d9405efacc5dd9a8f11",
+        "sizeBytes":  1478,
+        "mimeType":  "image/jpeg",
+        "capturedAt":  "2023-12-31T23:59:59"
+    },
+    {
+        "name":  "família_praia_日本.jpg",
+        "sha256":  "a9c3acad8fd308adcf1629e11077761e957c6a8391f6647cdebcfd86bd75f421",
+        "sizeBytes":  15220,
+        "mimeType":  "image/jpeg",
+        "capturedAt":  "2024-08-30T09:15:00"
+    }
+]
