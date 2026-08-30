@@ -18,6 +18,9 @@ kover {
                 classes(
                     "*.di.*",
                     "*.time.SystemTimeProvider",
+                    // Android-keystore-backed prefs need a device; covered by
+                    // instrumented tests, not JVM unit tests.
+                    "*.identity.EncryptedPrefsKeyValueStore",
                     "hilt_aggregated_deps.*",
                     "*_Factory*",
                     "*.DaggerHilt*",
@@ -36,4 +39,7 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.androidx.security.crypto)
+
+    testImplementation(libs.kotlinx.coroutines.test)
 }
