@@ -35,7 +35,7 @@ automatically) and the Android SDK (platform 35).
 gradlew assembleDebug
 gradlew testDebugUnitTest        # unit tests, JUnit 5
 gradlew detekt                   # static analysis
-gradlew koverVerify              # 80% coverage gate on :sync, :core:data, :core:crypto
+gradlew koverVerifyDebug         # 80% coverage gate on :sync, :core:data, :core:crypto
 ```
 
 ## Module map

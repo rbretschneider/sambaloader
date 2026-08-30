@@ -9,7 +9,7 @@
 # (decision D1) so dev behavior matches production behavior. This script is
 # the behavioral ancestor of the M5 harness's bootstrap.sh.
 #
-# Usage: ./generate.sh [extra-hostname-or-ip]
+# Usage: ./generate.sh [extra-hostname-or-ip ...]
 set -euo pipefail
 
 # Git Bash (MSYS) rewrites /CN=... arguments into Windows paths; disable that.
@@ -18,7 +18,6 @@ export MSYS2_ARG_CONV_EXCL='*'
 
 cd "$(dirname "$0")"
 OUT=out
-EXTRA_SAN="${1:-}"
 
 CA_DAYS=10950      # 30 years
 SERVER_DAYS=3650   # 10 years
@@ -32,21 +31,33 @@ fi
 mkdir -p "$OUT"
 
 echo "==> CA (EC P-256, $CA_DAYS days)"
+# Explicit config instead of -addext: the default openssl.cnf contributes its
+# own basicConstraints, and duplicate extensions make strict parsers (Go)
+# reject the certificate outright.
+cat > "$OUT/ca.cnf" <<'EOF'
+[req]
+distinguished_name = dn
+x509_extensions = v3_ca
+prompt = no
+[dn]
+CN = Sambaloader Dev CA
+[v3_ca]
+basicConstraints = critical,CA:TRUE,pathlen:0
+keyUsage = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
+EOF
 openssl ecparam -name prime256v1 -genkey -noout -out "$OUT/ca.key"
 openssl req -x509 -new -key "$OUT/ca.key" -sha256 -days "$CA_DAYS" \
-    -subj "/CN=Sambaloader Dev CA" \
-    -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
-    -addext "keyUsage=critical,keyCertSign,cRLSign" \
-    -out "$OUT/ca.crt"
+    -config "$OUT/ca.cnf" -out "$OUT/ca.crt"
 
 SAN="DNS:localhost,IP:127.0.0.1"
-if [[ -n "$EXTRA_SAN" ]]; then
-    if [[ "$EXTRA_SAN" =~ ^[0-9.]+$ ]]; then
-        SAN="$SAN,IP:$EXTRA_SAN"
+for extra in "$@"; do
+    if [[ "$extra" =~ ^[0-9.]+$ ]]; then
+        SAN="$SAN,IP:$extra"
     else
-        SAN="$SAN,DNS:$EXTRA_SAN"
+        SAN="$SAN,DNS:$extra"
     fi
-fi
+done
 
 echo "==> Server certificate ($SERVER_DAYS days, SAN: $SAN)"
 # Real files instead of <(...) — Git Bash's openssl cannot read /dev/fd.
@@ -82,7 +93,7 @@ EOF
 openssl ca -config "$CRL_DIR/ca.cnf" -gencrl \
     -keyfile "$OUT/ca.key" -cert "$OUT/ca.crt" -out "$OUT/crl.pem" 2>/dev/null
 
-rm -f "$OUT/server.csr" "$OUT/client.csr" "$OUT/server.ext" "$OUT/client.ext"
+rm -f "$OUT/server.csr" "$OUT/client.csr" "$OUT/server.ext" "$OUT/client.ext" "$OUT/ca.cnf"
 
 echo ""
 echo "Done. Files in $OUT/. CA fingerprint:"

@@ -26,7 +26,9 @@ jobs:
         run: ./gradlew testDebugUnitTest
 
       - name: Coverage gate (80% on :sync, :core:data, :core:crypto)
-        run: ./gradlew koverVerify koverXmlReport
+        # Debug-variant verify: the total task merges debug+release variants
+        # and reads never-run release tests as uncovered lines.
+        run: ./gradlew koverVerifyDebug koverXmlReportDebug
 
       - name: Assemble debug APK
         run: ./gradlew assembleDebug

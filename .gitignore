@@ -28,3 +28,6 @@ Thumbs.db
 # Dev PKI output — generated per-machine, never committed
 tools/dev-pki/out/
 devserver/ca/out/
+
+# Compiled dev tools
+*.exe

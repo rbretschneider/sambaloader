@@ -46,6 +46,6 @@
 ## Building / testing quickstart
 
 ```
-gradlew assembleDebug testDebugUnitTest detekt koverVerify
+gradlew assembleDebug testDebugUnitTest detekt koverVerifyDebug
 ./tools/seed-media.ps1 -Count 10     # seed a device/emulator camera roll
 ```
