@@ -29,4 +29,7 @@ sealed class TransportError {
 
     /** 2xx response whose body did not match the contract. */
     data class MalformedResponse(val detail: String?) : TransportError()
+
+    /** The local asset content disappeared before/while uploading. */
+    data object SourceVanished : TransportError()
 }

@@ -1,4 +1,4 @@
-package com.nectarmobiledevelopment.sambaloader.core.network
+package com.nectarmobiledevelopment.sambaloader.core.network.api
 
 /**
  * Client-side interpretation of an upload attempt, decoupled from raw HTTP so

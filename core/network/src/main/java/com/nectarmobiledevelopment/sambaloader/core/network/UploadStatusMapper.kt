@@ -1,5 +1,7 @@
 package com.nectarmobiledevelopment.sambaloader.core.network
 
+import com.nectarmobiledevelopment.sambaloader.core.network.api.UploadOutcome
+
 /**
  * Maps HTTP status codes from `POST /api/v1/assets` to [UploadOutcome]
  * (SERVER_SPEC §7.3). Network-level failures (no status code at all) never

@@ -1,5 +1,6 @@
 package com.nectarmobiledevelopment.sambaloader.core.network
 
+import com.nectarmobiledevelopment.sambaloader.core.network.api.UploadOutcome
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
