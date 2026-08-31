@@ -8,7 +8,11 @@ services:
       - ./nginx/api.conf:/etc/nginx/conf.d/api.conf:ro
       - ./nginx/admin.conf:/etc/nginx/conf.d/admin.conf:ro
       - ./nginx/admin:/usr/share/nginx/admin:ro
+      - ./nginx/reload-on-crl-change.sh:/docker-entrypoint.d/reload-on-crl-change.sh:ro
       - ./ca:/etc/nginx/ca:ro
+    # Reloads nginx within seconds of crl.pem changing, so a revocation
+    # from the admin page takes effect without operator action.
+    command: ["/bin/sh", "/docker-entrypoint.d/reload-on-crl-change.sh"]
     depends_on: [uploadd]
     restart: unless-stopped
 

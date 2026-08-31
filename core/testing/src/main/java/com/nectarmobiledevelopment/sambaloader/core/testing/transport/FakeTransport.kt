@@ -27,8 +27,12 @@ class FakeTransport : UploadTransport {
     /** Uploads accepted (in order). */
     val uploadedHashes = mutableListOf<String>()
 
-    /** Scripted result per upload; null means "store and succeed". */
-    var nextUploadResult: ((UploadPayload) -> TransportResult<UploadOutcome>)? = null
+    /**
+     * Scripted result per upload. The script itself may return null for
+     * "behave normally this time", which lets a test fail only some of
+     * the uploads in a batch.
+     */
+    var nextUploadResult: ((UploadPayload) -> TransportResult<UploadOutcome>?)? = null
 
     var checkResultOverride: TransportResult<CheckResult>? = null
 
@@ -57,8 +61,8 @@ class FakeTransport : UploadTransport {
 
     override suspend fun upload(payload: UploadPayload): TransportResult<UploadOutcome> {
         uploadCallCount++
-        nextUploadResult?.let { scripted ->
-            return scripted(payload)
+        nextUploadResult?.invoke(payload)?.let { scripted ->
+            return scripted
         }
         val outcome = if (payload.sha256 in remoteHashes) {
             UploadOutcome.ALREADY_PRESENT

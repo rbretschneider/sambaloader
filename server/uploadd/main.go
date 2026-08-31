@@ -80,6 +80,7 @@ func main() {
 	mux.HandleFunc("POST /enroll/complete", server.handleEnrollComplete)
 	mux.HandleFunc("GET /qr", server.handleQR)
 	mux.HandleFunc("GET /admin/devices", server.handleDeviceList)
+	mux.HandleFunc("POST /admin/devices/{serial}/revoke", server.handleRevoke)
 
 	log.Printf("uploadd listening on %s (library=%s db=%s)", cfg.listen, cfg.libraryPath, cfg.dbPath)
 	log.Fatal(http.ListenAndServe(cfg.listen, mux))

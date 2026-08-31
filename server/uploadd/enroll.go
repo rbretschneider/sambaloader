@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -241,6 +242,31 @@ func (s *apiServer) handleDeviceList(w http.ResponseWriter, _ *http.Request) {
 		devices = append(devices, d)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"devices": devices})
+}
+
+/**
+ * Revokes a device from the admin page. Requires ca.key to be present
+ * (same window as enrollment); nginx picks up the regenerated CRL via
+ * the reload watcher, so the device fails its next handshake.
+ */
+func (s *apiServer) handleRevoke(w http.ResponseWriter, r *http.Request) {
+	serial := r.PathValue("serial")
+	if serial == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing_serial"})
+		return
+	}
+	err := revokeWithCA(s.db, s.ca, s.ca.dir, serial)
+	switch {
+	case errors.Is(err, errCaKeyAbsent):
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "ca_key_absent"})
+	case errors.Is(err, errUnknownDevice):
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown_device"})
+	case err != nil:
+		log.Printf("revoke %s failed: %v", serial, err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "revoke_failed"})
+	default:
+		writeJSON(w, http.StatusOK, map[string]string{"status": "revoked", "serial": serial})
+	}
 }
 
 // uniqueCN appends a numeric suffix on collision (SERVER_SPEC §7.5).

@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -20,14 +21,25 @@ import (
 
 const crlValidity = 10 * 365 * 24 * time.Hour
 
+// errCaKeyAbsent lets the HTTP layer answer 503 with actionable guidance
+// instead of a generic failure: the operator must restore ca.key.
+var errCaKeyAbsent = errors.New("ca.key is not present")
+
+// errUnknownDevice maps to 404.
+var errUnknownDevice = errors.New("no such device")
+
 func revokeDevice(db *sql.DB, cfg config, serialHex string) error {
 	ca, err := loadCA(cfg.caDir)
 	if err != nil {
 		return fmt.Errorf("CA material: %w", err)
 	}
+	return revokeWithCA(db, ca, cfg.caDir, serialHex)
+}
+
+func revokeWithCA(db *sql.DB, ca *caMaterial, caDir, serialHex string) error {
 	caKey, err := ca.key()
 	if err != nil {
-		return fmt.Errorf("ca.key must be restored to %s for revocation: %w", cfg.caDir, err)
+		return errCaKeyAbsent
 	}
 
 	now := time.Now()
@@ -41,7 +53,7 @@ func revokeDevice(db *sql.DB, cfg config, serialHex string) error {
 	if rows, _ := result.RowsAffected(); rows == 0 {
 		var one int
 		if db.QueryRow("SELECT 1 FROM devices WHERE serial = ?", serialHex).Scan(&one) == sql.ErrNoRows {
-			return fmt.Errorf("no device with serial %s", serialHex)
+			return errUnknownDevice
 		}
 		log.Printf("device %s was already revoked; regenerating CRL anyway", serialHex)
 	}
@@ -80,7 +92,7 @@ func revokeDevice(db *sql.DB, cfg config, serialHex string) error {
 		return fmt.Errorf("CRL generation: %w", err)
 	}
 
-	crlPath := filepath.Join(cfg.caDir, "crl.pem")
+	crlPath := filepath.Join(caDir, "crl.pem")
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "X509 CRL", Bytes: der})
 	if err := os.WriteFile(crlPath, pemBytes, 0o644); err != nil {
 		return err

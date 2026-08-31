@@ -76,10 +76,21 @@ class AssetRepository @Inject constructor(
         }
     }
 
-    suspend fun markRetryableFailure(mediaStoreId: Long, error: String, nowEpochMillis: Long) {
+    /**
+     * @param countsAsAttempt false for failures that are not the asset's
+     * fault (server unreachable, no network). Those must not burn the
+     * retry budget, or a multi-day outage would permanently fail an
+     * entire library that is actually fine — FRD §9.8's 7-day scenario.
+     */
+    suspend fun markRetryableFailure(
+        mediaStoreId: Long,
+        error: String,
+        nowEpochMillis: Long,
+        countsAsAttempt: Boolean = true,
+    ) {
         transition(mediaStoreId, AssetState.FAILED_RETRYABLE) {
             it.copy(
-                attemptCount = it.attemptCount + 1,
+                attemptCount = if (countsAsAttempt) it.attemptCount + 1 else it.attemptCount,
                 lastAttemptAtEpochMillis = nowEpochMillis,
                 lastError = error,
             )

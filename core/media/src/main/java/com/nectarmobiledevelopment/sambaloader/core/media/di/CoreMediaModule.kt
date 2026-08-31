@@ -1,9 +1,11 @@
 package com.nectarmobiledevelopment.sambaloader.core.media.di
 
 import com.nectarmobiledevelopment.sambaloader.core.media.AllFilesAccessMediaDeleter
+import com.nectarmobiledevelopment.sambaloader.core.media.MediaAccessChecker
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaDeleter
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaSource
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaStoreSource
+import com.nectarmobiledevelopment.sambaloader.core.media.PlatformMediaAccessChecker
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -18,4 +20,7 @@ internal abstract class CoreMediaModule {
 
     @Binds
     abstract fun bindMediaDeleter(impl: AllFilesAccessMediaDeleter): MediaDeleter
+
+    @Binds
+    abstract fun bindMediaAccessChecker(impl: PlatformMediaAccessChecker): MediaAccessChecker
 }

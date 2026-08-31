@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetState
 import com.nectarmobiledevelopment.sambaloader.core.data.db.SambaloaderDatabase
+import com.nectarmobiledevelopment.sambaloader.core.data.health.SyncHealthRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.scan.ScanCursorRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
@@ -53,6 +54,7 @@ class UploadEngineTest {
             mediaSource = media,
             transportProvider = { if (enrolled) transport else null },
             timeProvider = clock,
+            syncHealthRepository = SyncHealthRepository(FakeSecureKeyValueStore(), clock),
         )
     }
 
@@ -127,9 +129,9 @@ class UploadEngineTest {
     }
 
     @Test
-    fun `attempts exhaust into permanent failure`() = runTest {
+    fun `attempts exhaust into permanent failure when the server keeps erroring`() = runTest {
         seedHashed(1)
-        transport.nextUploadResult = { TransportResult.Failure(TransportError.Timeout) }
+        transport.nextUploadResult = { TransportResult.Failure(TransportError.HttpError(500)) }
         repeat(10) {
             engine.uploadPending()
             nowMillis += 60L * 60 * 1000 // beyond any backoff window
@@ -138,6 +140,23 @@ class UploadEngineTest {
         engine.uploadPending()
 
         assertEquals(AssetState.FAILED_PERMANENT, assets.byId(1)!!.state)
+    }
+
+    @Test
+    fun `an unreachable server never exhausts the retry budget`() = runTest {
+        seedHashed(1)
+        transport.nextUploadResult = { TransportResult.Failure(TransportError.Timeout) }
+        repeat(30) {
+            engine.uploadPending()
+            nowMillis += 60L * 60 * 1000
+        }
+
+        // Connectivity failures say nothing about the asset, so they must
+        // not consume its attempts — otherwise an outage permanently
+        // fails a library that is perfectly fine (FRD §9.8).
+        val asset = assets.byId(1)!!
+        assertEquals(AssetState.FAILED_RETRYABLE, asset.state)
+        assertEquals(0, asset.attemptCount)
     }
 
     @Test

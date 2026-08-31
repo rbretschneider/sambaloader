@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetState
 import com.nectarmobiledevelopment.sambaloader.core.data.db.SambaloaderDatabase
+import com.nectarmobiledevelopment.sambaloader.core.data.health.SyncHealthRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.scan.ScanCursorRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
@@ -58,7 +59,10 @@ class DeletionEngineTest {
         val clock = TimeProvider { nowMillis }
         scanner = AssetScanner(media, assets, ScanCursorRepository(db.scanCursorDao()), settings)
         hasher = AssetHasher(media, assets, clock)
-        uploadEngine = UploadEngine(assets, media, { if (enrolled) transport else null }, clock)
+        uploadEngine = UploadEngine(
+            assets, media, { if (enrolled) transport else null }, clock,
+            SyncHealthRepository(FakeSecureKeyValueStore(), clock),
+        )
         engine = DeletionEngine(
             assetRepository = assets,
             mediaSource = media,

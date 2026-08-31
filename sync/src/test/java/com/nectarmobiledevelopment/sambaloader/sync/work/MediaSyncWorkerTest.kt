@@ -14,6 +14,7 @@ import androidx.work.testing.WorkManagerTestInitHelper
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetState
 import com.nectarmobiledevelopment.sambaloader.core.data.db.SambaloaderDatabase
+import com.nectarmobiledevelopment.sambaloader.core.data.health.SyncHealthRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.scan.ScanCursorRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
@@ -67,7 +68,9 @@ class MediaSyncWorkerTest {
                         com.nectarmobiledevelopment.sambaloader.core.testing.transport.FakeTransport()
                     },
                     timeProvider = clock,
+                    syncHealthRepository = SyncHealthRepository(FakeSecureKeyValueStore(), clock),
                 )
+                val runner = com.nectarmobiledevelopment.sambaloader.sync.SyncRunner(hasher, uploadEngine, clock)
                 val notifications = SyncNotifications(appContext)
                 val effectiveScanner = if (scannerThrows) {
                     ThrowingScanner(media, assets, cursor, settings)
@@ -77,11 +80,11 @@ class MediaSyncWorkerTest {
                 return when (workerClassName) {
                     MediaSyncWorker::class.java.name -> MediaSyncWorker(
                         appContext, workerParameters,
-                        effectiveScanner, hasher, uploadEngine, notifications, scheduler,
+                        effectiveScanner, runner, notifications, scheduler,
                     )
                     ReconciliationWorker::class.java.name -> ReconciliationWorker(
                         appContext, workerParameters,
-                        effectiveScanner, hasher, uploadEngine, scheduler,
+                        effectiveScanner, runner, scheduler,
                     )
                     else -> null
                 }

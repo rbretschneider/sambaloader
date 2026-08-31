@@ -4,9 +4,8 @@ import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.nectarmobiledevelopment.sambaloader.sync.AssetHasher
 import com.nectarmobiledevelopment.sambaloader.sync.AssetScanner
-import com.nectarmobiledevelopment.sambaloader.sync.UploadEngine
+import com.nectarmobiledevelopment.sambaloader.sync.SyncRunner
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 
@@ -23,8 +22,7 @@ class MediaSyncWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted parameters: WorkerParameters,
     private val scanner: AssetScanner,
-    private val hasher: AssetHasher,
-    private val uploadEngine: UploadEngine,
+    private val runner: SyncRunner,
     private val notifications: SyncNotifications,
     private val scheduler: SyncScheduler,
 ) : CoroutineWorker(context, parameters) {
@@ -32,8 +30,9 @@ class MediaSyncWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         return try {
             scanner.scan()
-            hasher.hashPending()
-            uploadEngine.uploadPending { done, total ->
+            // Drains repeatedly, not just one batch: a first-run backfill
+            // must not need hundreds of scheduled runs to finish.
+            runner.drain { done, total ->
                 promoteToForeground(remaining = total - done)
             }
             Result.success()

@@ -3,6 +3,7 @@ package com.nectarmobiledevelopment.sambaloader.sync
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetEntity
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetState
+import com.nectarmobiledevelopment.sambaloader.core.data.health.SyncHealthRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaItem
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaSource
@@ -27,6 +28,7 @@ class UploadEngine @Inject constructor(
     private val mediaSource: MediaSource,
     private val transportProvider: TransportProvider,
     private val timeProvider: TimeProvider,
+    private val syncHealthRepository: SyncHealthRepository,
 ) {
 
     private val backoffPolicy = BackoffPolicy()
@@ -42,6 +44,7 @@ class UploadEngine @Inject constructor(
         if (pending.isEmpty()) {
             return UploadSummary()
         }
+        var reachedServer = false
 
         val skipped = skipRemotelyPresent(transport, pending)
         val toUpload = pending.filter { it.sha256 !in skipped }
@@ -49,14 +52,30 @@ class UploadEngine @Inject constructor(
         var uploaded = 0
         var retryable = 0
         var permanent = 0
-        toUpload.forEachIndexed { index, asset ->
+        for ((index, asset) in toUpload.withIndex()) {
             onProgress(index, toUpload.size)
-            when (uploadOne(transport, asset)) {
+            val disposition = uploadOne(transport, asset)
+            if (disposition != UploadDisposition.OFFLINE) {
+                reachedServer = true
+            }
+            when (disposition) {
                 UploadDisposition.UPLOADED -> uploaded++
                 UploadDisposition.RETRYABLE -> retryable++
                 UploadDisposition.PERMANENT -> permanent++
+                UploadDisposition.OFFLINE -> {
+                    // The server is unreachable: stop the pass instead of
+                    // failing every remaining asset against a dead network
+                    // (and draining the battery doing it).
+                    retryable++
+                    break
+                }
                 UploadDisposition.VANISHED -> Unit
             }
+        }
+        if (reachedServer) {
+            // Proof the background pipeline still works end to end; the
+            // stall watchdog keys off this (FRD §8.10).
+            syncHealthRepository.recordSuccess()
         }
         return UploadSummary(
             uploaded = uploaded,
@@ -147,17 +166,20 @@ class UploadEngine @Inject constructor(
         }
         val isPermanent = error is TransportError.HttpError &&
             UploadStatusMapper.fromStatusCode(error.statusCode) == UploadOutcome.PERMANENT_FAILURE
-        return if (isPermanent) {
+        if (isPermanent) {
             assetRepository.markPermanentFailure(asset.mediaStoreId, error.describe())
-            UploadDisposition.PERMANENT
-        } else {
-            assetRepository.markRetryableFailure(
-                asset.mediaStoreId,
-                error = error.describe(),
-                nowEpochMillis = timeProvider.nowEpochMillis(),
-            )
-            UploadDisposition.RETRYABLE
+            return UploadDisposition.PERMANENT
         }
+        val offline = error.isConnectivityFailure()
+        assetRepository.markRetryableFailure(
+            asset.mediaStoreId,
+            error = error.describe(),
+            nowEpochMillis = timeProvider.nowEpochMillis(),
+            // An unreachable server says nothing about this asset, so it
+            // must not consume the asset's retry budget.
+            countsAsAttempt = !offline,
+        )
+        return if (offline) UploadDisposition.OFFLINE else UploadDisposition.RETRYABLE
     }
 
     private fun AssetEntity.toPayload(): UploadPayload {
@@ -180,7 +202,7 @@ class UploadEngine @Inject constructor(
         )
     }
 
-    private enum class UploadDisposition { UPLOADED, RETRYABLE, PERMANENT, VANISHED }
+    private enum class UploadDisposition { UPLOADED, RETRYABLE, PERMANENT, VANISHED, OFFLINE }
 
     private companion object {
         const val BATCH_LIMIT = 100
@@ -193,4 +215,15 @@ private fun TransportError.describe(): String {
         is TransportError.HttpError -> "HTTP $statusCode"
         else -> this::class.simpleName ?: toString()
     }
+}
+
+/**
+ * True when the failure is about reaching the server at all, rather than
+ * about this particular asset.
+ */
+private fun TransportError.isConnectivityFailure(): Boolean {
+    return this is TransportError.Network ||
+        this is TransportError.Timeout ||
+        this is TransportError.HandshakeRejected ||
+        this is TransportError.UntrustedServer
 }

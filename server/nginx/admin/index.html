@@ -22,9 +22,11 @@
 <div id="out"></div>
 
 <h2>Devices</h2>
-<p>To revoke a lost device: restore <code>ca.key</code>, then run
-   <code>./ca/revoke.sh &lt;serial&gt;</code> on the server.</p>
-<table id="devices"><tr><th>Label</th><th>CN</th><th>Serial</th><th>Last seen</th><th>Assets</th><th>Status</th></tr></table>
+<p>Revoking blocks a lost phone at its next connection. It needs
+   <code>ca.key</code> restored, same as enrolling. This cannot be undone —
+   the device must be enrolled again to come back.</p>
+<table id="devices"><tr><th>Label</th><th>CN</th><th>Serial</th><th>Last seen</th><th>Assets</th><th>Status</th><th></th></tr></table>
+<p id="revoke-status"></p>
 
 <script>
 document.getElementById('enroll').onclick = async () => {
@@ -42,18 +44,44 @@ document.getElementById('enroll').onclick = async () => {
     '<p>Token <code>' + payload.token + '</code> is single-use and expires in 10 minutes.</p>';
 };
 
+async function revoke(serial, label) {
+  if (!confirm('Revoke "' + label + '"?\n\nThis phone will stop being able to upload. ' +
+               'It cannot be undone — you would have to enroll it again.')) return;
+  const status = document.getElementById('revoke-status');
+  status.textContent = 'Revoking…';
+  const response = await fetch('/admin/devices/' + encodeURIComponent(serial) + '/revoke',
+                               { method: 'POST' });
+  const body = await response.json().catch(() => ({}));
+  if (response.ok) {
+    status.textContent = 'Revoked. nginx picks up the new revocation list within ~10 seconds.';
+    loadDevices();
+  } else if (body.error === 'ca_key_absent') {
+    status.innerHTML = '<span class="warn">ca.key is not on the server.</span> ' +
+      'Restore it into the CA directory, then revoke again (and remove it afterwards).';
+  } else {
+    status.innerHTML = '<span class="warn">Revoke failed: ' + (body.error || response.status) + '</span>';
+  }
+}
+
 async function loadDevices() {
   const response = await fetch('/admin/devices');
   if (!response.ok) return;
   const { devices } = await response.json();
   const table = document.getElementById('devices');
+  while (table.rows.length > 1) table.deleteRow(1);
   const when = (t) => t ? new Date(t * 1000).toLocaleString() : '—';
   for (const d of devices) {
     const row = table.insertRow();
     row.innerHTML =
       '<td>' + d.label + '</td><td>' + d.cn + '</td><td class="fp">' + d.serial +
       '</td><td>' + when(d.last_seen_at) + '</td><td>' + d.assets_total +
-      '</td><td>' + (d.revoked_at ? '<span class="warn">revoked</span>' : 'active') + '</td>';
+      '</td><td>' + (d.revoked_at ? '<span class="warn">revoked</span>' : 'active') + '</td><td></td>';
+    if (!d.revoked_at) {
+      const button = document.createElement('button');
+      button.textContent = 'Revoke';
+      button.onclick = () => revoke(d.serial, d.label);
+      row.cells[6].appendChild(button);
+    }
   }
 }
 loadDevices();
