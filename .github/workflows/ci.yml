@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [master]
+    tags: ["v*"]   # tagged builds publish a GitHub Release with the APK
   pull_request:
 
 jobs:
