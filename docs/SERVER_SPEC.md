@@ -1,6 +1,6 @@
 # Sambaloader Server — Container Stack Specification
 
-**Version:** 1.0
+**Version:** 1.1 (1.0 → 1.1: `X-Asset-Filename` is percent-encoded UTF-8)
 **Status:** FROZEN — the Android app in this repo is built against this contract.
 Changes require a version bump here and a matching client change.
 **Source requirements:** [frd.md](../frd.md) v1.0, amended by decisions D1–D5 in
@@ -371,7 +371,7 @@ Request headers:
 |---|---|---|
 | `X-Asset-Sha256` | yes | lowercase hex SHA-256 of the body |
 | `X-Asset-Captured-At` | yes | Unix seconds; capture time from EXIF/MediaStore |
-| `X-Asset-Filename` | yes | original display name (UTF-8) |
+| `X-Asset-Filename` | yes | original display name, **percent-encoded UTF-8** (HTTP headers are ASCII-only; server must percent-decode) |
 | `Content-Type` | yes | real MIME type |
 | `Content-Length` | yes | body size in bytes |
 

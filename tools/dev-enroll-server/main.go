@@ -59,6 +59,7 @@ func main() {
 	publicURL := flag.String("url", "https://localhost:9443", "API base URL placed in the QR payload")
 	apiAddr := flag.String("api", ":9443", "mTLS API listen address")
 	adminAddr := flag.String("admin", ":8443", "enrollment/admin listen address (LAN only)")
+	libraryDir := flag.String("library", "./library", "upload destination standing in for the NAS")
 	flag.Parse()
 
 	s, err := load(*pkiDir, *publicURL)
@@ -66,7 +67,7 @@ func main() {
 		log.Fatalf("failed to load PKI from %s: %v (run tools/dev-pki/generate.sh first)", *pkiDir, err)
 	}
 
-	go s.serveAPI(*apiAddr)
+	go s.serveAPI(*apiAddr, newLibrary(*libraryDir))
 	log.Printf("admin/enroll on https://localhost%s  |  mTLS API on %s  |  QR url %s", *adminAddr, *apiAddr, *publicURL)
 	log.Fatal(s.serveAdmin(*adminAddr))
 }
@@ -299,7 +300,7 @@ func (s *server) handleAdminPage(w http.ResponseWriter, r *http.Request) {
 
 // ---- mTLS API listener ----------------------------------------------------
 
-func (s *server) serveAPI(addr string) {
+func (s *server) serveAPI(addr string, lib *library) {
 	pool := x509.NewCertPool()
 	pool.AddCert(s.caCert)
 
@@ -310,6 +311,12 @@ func (s *server) serveAPI(addr string) {
 			"device":      r.TLS.PeerCertificates[0].Subject.CommonName,
 			"server_time": time.Now().Unix(),
 		})
+	})
+	mux.HandleFunc("POST /api/v1/assets/check", lib.handleCheck)
+	mux.HandleFunc("POST /api/v1/assets", func(w http.ResponseWriter, r *http.Request) {
+		// Attribution header mirrors what nginx injects in production.
+		r.Header.Set("X-Device-CN", r.TLS.PeerCertificates[0].Subject.CommonName)
+		lib.handleUpload(w, r)
 	})
 
 	cert, err := s.serverTLSCert()
