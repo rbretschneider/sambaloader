@@ -19,8 +19,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @HiltViewModel
-// One setter per user-visible setting; splitting them would only add indirection.
-@Suppress("TooManyFunctions")
 class SettingsViewModel @Inject constructor(
     private val mediaSource: MediaSource,
     private val mediaDeleter: MediaDeleter,

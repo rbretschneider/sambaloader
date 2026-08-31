@@ -9,8 +9,13 @@ data class SyncSettings(
      * silently shipped to the NAS.
      */
     val selectedFolderIds: Set<String> = emptySet(),
-    /** Upload only on unmetered networks. Defaults ON: cellular data is expensive. */
-    val isWifiOnly: Boolean = true,
+    /** When Wi-Fi is required before a scheduled backup sends a file. */
+    val wifiRequirement: WifiRequirement = WifiRequirement.DEFAULT,
+    /**
+     * With [WifiRequirement.FOR_LARGE_FILES], files at or above this size
+     * wait for Wi-Fi; smaller ones may go over cellular.
+     */
+    val largeFileThresholdMb: Int = WifiRequirement.DEFAULT_LARGE_FILE_MB,
     /**
      * Only run scheduled backups while charging. Off by default — waiting
      * for a charger can mean photos sit unbacked-up all day.
@@ -30,6 +35,13 @@ data class SyncSettings(
     val isFolderSelectionSet: Boolean
         get() = selectedFolderIds.isNotEmpty()
 
+    /**
+     * Largest file that may be sent over cellular, in bytes. Only
+     * meaningful for [WifiRequirement.FOR_LARGE_FILES].
+     */
+    val largeFileThresholdBytes: Long
+        get() = largeFileThresholdMb.toLong() * BYTES_PER_MB
+
     companion object {
         const val DEFAULT_RETENTION_DAYS = 7
 
@@ -38,5 +50,7 @@ data class SyncSettings(
 
         /** 0 means upload as soon as the photo is seen. */
         val UPLOAD_DELAY_CHOICES_MINUTES = listOf(0, 5, 10, 15, 30, 60, 90)
+
+        const val BYTES_PER_MB = 1024L * 1024L
     }
 }

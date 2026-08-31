@@ -1,6 +1,8 @@
 package com.nectarmobiledevelopment.sambaloader.core.network.di
 
 import com.nectarmobiledevelopment.sambaloader.core.network.MtlsTransportFactory
+import com.nectarmobiledevelopment.sambaloader.core.network.PlatformNetworkConditions
+import com.nectarmobiledevelopment.sambaloader.core.network.api.NetworkConditions
 import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportFactory
 import com.nectarmobiledevelopment.sambaloader.core.network.enroll.EnrollmentApi
 import com.nectarmobiledevelopment.sambaloader.core.network.enroll.EnrollmentClient
@@ -18,4 +20,7 @@ internal abstract class CoreNetworkModule {
 
     @Binds
     abstract fun bindEnrollmentClient(impl: EnrollmentApi): EnrollmentClient
+
+    @Binds
+    abstract fun bindNetworkConditions(impl: PlatformNetworkConditions): NetworkConditions
 }

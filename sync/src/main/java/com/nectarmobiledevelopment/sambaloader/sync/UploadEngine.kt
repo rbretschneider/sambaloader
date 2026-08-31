@@ -4,12 +4,15 @@ import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetEntity
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetState
 import com.nectarmobiledevelopment.sambaloader.core.data.health.SyncHealthRepository
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettings
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.WifiRequirement
 import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
 import java.util.concurrent.TimeUnit
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaItem
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaSource
 import com.nectarmobiledevelopment.sambaloader.core.network.UploadStatusMapper
+import com.nectarmobiledevelopment.sambaloader.core.network.api.NetworkConditions
 import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportError
 import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportResult
 import com.nectarmobiledevelopment.sambaloader.core.network.api.UploadOutcome
@@ -33,6 +36,7 @@ class UploadEngine @Inject constructor(
     private val timeProvider: TimeProvider,
     private val syncHealthRepository: SyncHealthRepository,
     private val settingsRepository: SyncSettingsRepository,
+    private val networkConditions: NetworkConditions,
 ) {
 
     private val backoffPolicy = BackoffPolicy()
@@ -52,11 +56,15 @@ class UploadEngine @Inject constructor(
         val eligibleCapturedBefore = TimeUnit.MILLISECONDS.toSeconds(timeProvider.nowEpochMillis()) -
             TimeUnit.MINUTES.toSeconds(settings.uploadDelayMinutes.toLong())
 
-        val pending = assetRepository.uploadableNow(eligibleCapturedBefore, BATCH_LIMIT)
+        val batch = nextBatch(settings, eligibleCapturedBefore)
+        val pending = batch.assets
+        val waitingForWifi = batch.waitingForWifi
+
         if (pending.isEmpty()) {
             return UploadSummary(
                 nextHeldCaptureTimeEpochSeconds =
                 assetRepository.earliestHeldCaptureTime(eligibleCapturedBefore),
+                waitingForWifi = waitingForWifi,
             )
         }
         var reachedServer = false
@@ -99,7 +107,54 @@ class UploadEngine @Inject constructor(
             failedPermanent = permanent,
             nextHeldCaptureTimeEpochSeconds =
             assetRepository.earliestHeldCaptureTime(eligibleCapturedBefore),
+            waitingForWifi = waitingForWifi,
         )
+    }
+
+    /**
+     * The assets to attempt this pass, plus how many were left behind
+     * because they are too big for the current metered connection.
+     *
+     * On a metered connection the user may allow only small files through,
+     * so a 350 MB video does not eat a month of data.
+     */
+    private suspend fun nextBatch(
+        settings: SyncSettings,
+        eligibleCapturedBefore: Long,
+    ): PendingBatch {
+        val meteredLimit = meteredSizeLimit(settings)
+            ?: return PendingBatch(assetRepository.uploadableNow(eligibleCapturedBefore, BATCH_LIMIT), 0)
+        return PendingBatch(
+            assets = assetRepository.uploadableNowUnderSize(
+                eligibleCapturedBefore,
+                meteredLimit,
+                BATCH_LIMIT,
+            ),
+            waitingForWifi = assetRepository.countWaitingForWifi(eligibleCapturedBefore, meteredLimit),
+        )
+    }
+
+    private data class PendingBatch(
+        val assets: List<AssetEntity>,
+        val waitingForWifi: Int,
+    )
+
+    /**
+     * Byte cap for this pass, or null when there is none: either the
+     * connection is unmetered, or the user allows cellular for everything.
+     * ALWAYS is handled by the WorkManager constraint, but is enforced
+     * here too so a manual run cannot spend cellular data unasked.
+     */
+    private fun meteredSizeLimit(settings: SyncSettings): Long? {
+        if (!networkConditions.isMetered()) {
+            return null
+        }
+        return when (settings.wifiRequirement) {
+            WifiRequirement.NEVER -> null
+            WifiRequirement.FOR_LARGE_FILES -> settings.largeFileThresholdBytes
+            // Nothing may go over cellular: a zero cap matches no file.
+            WifiRequirement.ALWAYS -> 0
+        }
     }
 
     /** UPLOADING rows older than the stall window go back to HASHED. */

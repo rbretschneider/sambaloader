@@ -1,6 +1,7 @@
 package com.nectarmobiledevelopment.sambaloader.ui.home
 
 import com.nectarmobiledevelopment.sambaloader.core.data.health.SyncHealth
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.WifiRequirement
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaAccess
 
 /** Everything the home screen renders. */
@@ -15,15 +16,25 @@ data class HomeUiState(
     val deletedCount: Int,
     val isSyncing: Boolean,
     val backedUpFolderSummary: String,
-    val isWifiOnly: Boolean,
+    val wifiRequirement: WifiRequirement,
+    val largeFileThresholdMb: Int,
     val uploadDelayMinutes: Int,
     val requiresCharging: Boolean,
+    /** Files held back until Wi-Fi because of their size. */
+    val waitingForWifiCount: Int,
     val mediaAccess: MediaAccess,
     val syncHealth: SyncHealth,
 ) {
 
     val uploadDelaySummary: String
         get() = if (uploadDelayMinutes == 0) "Off" else "$uploadDelayMinutes min"
+
+    val wifiRequirementSummary: String
+        get() = when (wifiRequirement) {
+            WifiRequirement.ALWAYS -> "Always"
+            WifiRequirement.FOR_LARGE_FILES -> "Files ≥ $largeFileThresholdMb MB"
+            WifiRequirement.NEVER -> "Never"
+        }
     val statusMessage: String
         get() = when {
             !isEnrolled -> "Not paired with a server yet"

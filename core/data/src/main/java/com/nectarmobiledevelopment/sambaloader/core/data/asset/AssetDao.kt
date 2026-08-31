@@ -45,6 +45,35 @@ interface AssetDao {
         limit: Int,
     ): List<AssetEntity>
 
+    /**
+     * As [inStateCapturedBefore], but only files small enough to send
+     * over a metered connection.
+     */
+    @Query(
+        "SELECT * FROM assets WHERE state = :state " +
+            "AND capturedAtEpochSeconds <= :capturedAtOrBeforeEpochSeconds " +
+            "AND sizeBytes < :maxSizeBytes " +
+            "ORDER BY capturedAtEpochSeconds ASC LIMIT :limit",
+    )
+    suspend fun inStateCapturedBeforeUnderSize(
+        state: AssetState,
+        capturedAtOrBeforeEpochSeconds: Long,
+        maxSizeBytes: Long,
+        limit: Int,
+    ): List<AssetEntity>
+
+    /** How many eligible assets are too large for the current connection. */
+    @Query(
+        "SELECT COUNT(*) FROM assets WHERE state = :state " +
+            "AND capturedAtEpochSeconds <= :capturedAtOrBeforeEpochSeconds " +
+            "AND sizeBytes >= :maxSizeBytes",
+    )
+    suspend fun countOversizeForMetered(
+        state: AssetState,
+        capturedAtOrBeforeEpochSeconds: Long,
+        maxSizeBytes: Long,
+    ): Int
+
     /** Capture time of the next asset still inside its grace period. */
     @Query(
         "SELECT MIN(capturedAtEpochSeconds) FROM assets WHERE state = :state " +

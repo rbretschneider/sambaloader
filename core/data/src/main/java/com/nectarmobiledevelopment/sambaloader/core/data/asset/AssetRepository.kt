@@ -50,6 +50,32 @@ class AssetRepository @Inject constructor(
         )
     }
 
+    /** Uploadable assets small enough for a metered connection. */
+    suspend fun uploadableNowUnderSize(
+        capturedAtOrBeforeEpochSeconds: Long,
+        maxSizeBytes: Long,
+        limit: Int = DEFAULT_BATCH_LIMIT,
+    ): List<AssetEntity> {
+        return dao.inStateCapturedBeforeUnderSize(
+            AssetState.HASHED,
+            capturedAtOrBeforeEpochSeconds,
+            maxSizeBytes,
+            limit,
+        )
+    }
+
+    /** Eligible assets currently too large to send over cellular. */
+    suspend fun countWaitingForWifi(
+        capturedAtOrBeforeEpochSeconds: Long,
+        maxSizeBytes: Long,
+    ): Int {
+        return dao.countOversizeForMetered(
+            AssetState.HASHED,
+            capturedAtOrBeforeEpochSeconds,
+            maxSizeBytes,
+        )
+    }
+
     /**
      * Capture time of the next asset still being held back, or null when
      * nothing is waiting on the grace period.

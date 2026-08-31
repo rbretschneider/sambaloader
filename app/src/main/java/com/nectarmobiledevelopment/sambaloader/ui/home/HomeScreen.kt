@@ -182,6 +182,9 @@ private fun StatusCard(uiState: HomeUiState) {
             if (uiState.deletedCount > 0) {
                 StatusRow("Freed on this phone", uiState.deletedCount.toString())
             }
+            if (uiState.waitingForWifiCount > 0) {
+                StatusRow("Waiting for Wi-Fi", uiState.waitingForWifiCount.toString())
+            }
         }
     }
 }
@@ -197,7 +200,7 @@ private fun ConfigCard(uiState: HomeUiState) {
             Text("Configuration", style = MaterialTheme.typography.titleSmall)
             StatusRow("Folders", uiState.backedUpFolderSummary)
             StatusRow("Delay", uiState.uploadDelaySummary)
-            StatusRow("Wi-Fi only", uiState.isWifiOnly.asYesNo())
+            StatusRow("Wi-Fi required", uiState.wifiRequirementSummary)
             StatusRow("Charging required", uiState.requiresCharging.asYesNo())
         }
     }

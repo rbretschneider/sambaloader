@@ -1,12 +1,14 @@
 package com.nectarmobiledevelopment.sambaloader.ui.settings
 
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.WifiRequirement
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaFolder
 
 /** State of the settings screen. */
 data class SettingsUiState(
     val folders: List<FolderChoice> = emptyList(),
     val isLoadingFolders: Boolean = true,
-    val isWifiOnly: Boolean = true,
+    val wifiRequirement: WifiRequirement = WifiRequirement.DEFAULT,
+    val largeFileThresholdMb: Int = WifiRequirement.DEFAULT_LARGE_FILE_MB,
     val uploadDelayMinutes: Int = 0,
     val requiresCharging: Boolean = false,
     val isLocalDeletionEnabled: Boolean = false,

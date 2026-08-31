@@ -9,7 +9,6 @@ import com.nectarmobiledevelopment.sambaloader.core.data.db.SambaloaderDatabase
 import com.nectarmobiledevelopment.sambaloader.core.data.health.SyncHealthRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.scan.ScanCursorRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
-import com.nectarmobiledevelopment.sambaloader.core.data.settings.WifiRequirement
 import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
 import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportError
 import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportResult
@@ -35,7 +34,6 @@ class UploadEngineTest {
     private val media = FakeMediaSource()
     private val transport = FakeTransport()
     private var enrolled = true
-    private var isMetered = false
     private var nowMillis = 1_756_500_000_000L
     private val settings = SyncSettingsRepository(FakeSecureKeyValueStore())
     private lateinit var scanner: AssetScanner
@@ -59,7 +57,7 @@ class UploadEngineTest {
             timeProvider = clock,
             syncHealthRepository = SyncHealthRepository(FakeSecureKeyValueStore(), clock),
             settingsRepository = settings,
-            networkConditions = { isMetered },
+            networkConditions = { false },
         )
     }
 
@@ -276,78 +274,5 @@ class UploadEngineTest {
 
         assertEquals(1, summary.uploaded)
         assertEquals(0, summary.skippedRemoteHas)
-    }
-
-    /** Seeds a photo of an exact byte size, so size rules can be tested. */
-    private suspend fun seedSized(id: Long, sizeBytes: Int) {
-        media.addItem(id, content = ByteArray(sizeBytes) { id.toByte() })
-        scanner.scan()
-        hasher.hashPending()
-    }
-
-    @Test
-    fun `on mobile data a large file waits while a small one goes straight up`() = runTest {
-        settings.setWifiRequirement(WifiRequirement.FOR_LARGE_FILES)
-        settings.setLargeFileThresholdMb(2)
-        isMetered = true
-        seedSized(1, sizeBytes = 1024)
-        seedSized(2, sizeBytes = 3 * 1024 * 1024)
-
-        val summary = engine.uploadPending()
-
-        assertEquals(1, summary.uploaded)
-        assertEquals(AssetState.UPLOADED, assets.byId(1)!!.state)
-        assertEquals(AssetState.HASHED, assets.byId(2)!!.state)
-        assertEquals(1, summary.waitingForWifi)
-    }
-
-    @Test
-    fun `the held file uploads as soon as Wi-Fi is back`() = runTest {
-        settings.setWifiRequirement(WifiRequirement.FOR_LARGE_FILES)
-        settings.setLargeFileThresholdMb(2)
-        isMetered = true
-        seedSized(2, sizeBytes = 3 * 1024 * 1024)
-        assertEquals(0, engine.uploadPending().uploaded)
-
-        isMetered = false
-        val summary = engine.uploadPending()
-
-        assertEquals(1, summary.uploaded)
-        assertEquals(0, summary.waitingForWifi)
-        assertEquals(AssetState.UPLOADED, assets.byId(2)!!.state)
-    }
-
-    @Test
-    fun `requiring Wi-Fi always holds even a tiny file on mobile data`() = runTest {
-        settings.setWifiRequirement(WifiRequirement.ALWAYS)
-        isMetered = true
-        seedSized(1, sizeBytes = 16)
-
-        val summary = engine.uploadPending()
-
-        assertEquals(0, summary.uploaded)
-        assertEquals(AssetState.HASHED, assets.byId(1)!!.state)
-    }
-
-    @Test
-    fun `never requiring Wi-Fi uploads a large file over mobile data`() = runTest {
-        settings.setWifiRequirement(WifiRequirement.NEVER)
-        settings.setLargeFileThresholdMb(2)
-        isMetered = true
-        seedSized(2, sizeBytes = 3 * 1024 * 1024)
-
-        assertEquals(1, engine.uploadPending().uploaded)
-    }
-
-    @Test
-    fun `size limits do not apply on an unmetered connection`() = runTest {
-        settings.setWifiRequirement(WifiRequirement.FOR_LARGE_FILES)
-        settings.setLargeFileThresholdMb(2)
-        seedSized(2, sizeBytes = 3 * 1024 * 1024)
-
-        val summary = engine.uploadPending()
-
-        assertEquals(1, summary.uploaded)
-        assertEquals(0, summary.waitingForWifi)
     }
 }

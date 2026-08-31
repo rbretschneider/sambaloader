@@ -10,6 +10,8 @@ import com.nectarmobiledevelopment.sambaloader.core.data.db.SambaloaderDatabase
 import com.nectarmobiledevelopment.sambaloader.core.data.health.SyncHealthRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.identity.Enrollment
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.WifiRequirement
+import com.nectarmobiledevelopment.sambaloader.core.network.api.NetworkConditions
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaAccess
 import com.nectarmobiledevelopment.sambaloader.core.testing.data.FakeIdentityRepository
 import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeMediaSource
@@ -61,6 +63,7 @@ class HomeViewModelTest {
     }
 
     private var mediaAccess = MediaAccess.FULL
+    private var isMetered = false
     private var nowMillis = 1_756_500_000_000L
     private val media = FakeMediaSource()
 
@@ -71,6 +74,7 @@ class HomeViewModelTest {
         syncHealthRepository = health,
         mediaAccessChecker = { mediaAccess },
         mediaSource = media,
+        networkConditions = { isMetered },
         timeProvider = { nowMillis },
         syncTrigger = syncTrigger,
     )
@@ -163,7 +167,7 @@ class HomeViewModelTest {
         enroll()
         val state = viewModel().uiState.value
         assertEquals("Camera (default)", state.backedUpFolderSummary)
-        assertTrue(state.isWifiOnly)
+        assertEquals(WifiRequirement.ALWAYS, state.wifiRequirement)
         assertEquals("Off", state.uploadDelaySummary)
         assertFalse(state.requiresCharging)
     }

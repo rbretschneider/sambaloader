@@ -63,7 +63,7 @@ class ChaosTest {
         health = SyncHealthRepository(store, clock)
         scanner = AssetScanner(media, assets, ScanCursorRepository(db.scanCursorDao()), settings)
         hasher = AssetHasher(media, assets, clock)
-        engine = UploadEngine(assets, media, { transport }, clock, health, settings) { false }
+        engine = UploadEngine(assets, media, { transport }, clock, health, settings)
         runner = SyncRunner(hasher, engine, clock)
     }
 

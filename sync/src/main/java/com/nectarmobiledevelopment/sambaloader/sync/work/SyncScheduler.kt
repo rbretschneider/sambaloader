@@ -132,11 +132,35 @@ class SyncScheduler @Inject constructor(
      * spent on backups; otherwise any connection will do.
      */
     private fun networkType(): NetworkType {
-        return if (settingsRepository.current().isWifiOnly) {
-            NetworkType.UNMETERED
-        } else {
+        // FOR_LARGE_FILES needs work to RUN on cellular so small files can
+        // go; the size filter itself lives in UploadEngine.
+        return if (settingsRepository.current().wifiRequirement.allowsCellular) {
             NetworkType.CONNECTED
+        } else {
+            NetworkType.UNMETERED
         }
+    }
+
+    /**
+     * Wakes up when Wi-Fi arrives, for files held back by their size on a
+     * metered connection. Their normal trigger already ran and found
+     * nothing it was allowed to send, so without this they would wait for
+     * the 6-hour sweep.
+     */
+    fun scheduleWifiRunForLargeFiles() {
+        val request = OneTimeWorkRequestBuilder<MediaSyncWorker>()
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.UNMETERED)
+                    .setRequiresCharging(settingsRepository.current().requiresCharging)
+                    .build(),
+            )
+            .build()
+        workManager.enqueueUniqueWork(
+            LARGE_FILE_WIFI_WORK_NAME,
+            ExistingWorkPolicy.KEEP,
+            request,
+        )
     }
 
     /**
@@ -180,6 +204,7 @@ class SyncScheduler @Inject constructor(
         const val RECONCILIATION_WORK_NAME = "media-reconciliation"
         const val IMMEDIATE_WORK_NAME = "media-immediate-scan"
         const val HELD_ASSET_WORK_NAME = "held-asset-wakeup"
+        const val LARGE_FILE_WIFI_WORK_NAME = "large-file-wifi-wakeup"
         const val DELETION_WORK_NAME = "local-deletion"
         const val IMMEDIATE_DELETION_WORK_NAME = "local-deletion-now"
         const val DELETION_INTERVAL_HOURS = 24L

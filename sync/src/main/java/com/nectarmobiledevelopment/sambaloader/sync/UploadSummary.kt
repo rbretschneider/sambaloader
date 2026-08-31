@@ -13,4 +13,6 @@ data class UploadSummary(
      * wake up exactly when that photo becomes eligible.
      */
     val nextHeldCaptureTimeEpochSeconds: Long? = null,
+    /** Eligible files too large to send over the current metered connection. */
+    val waitingForWifi: Int = 0,
 )

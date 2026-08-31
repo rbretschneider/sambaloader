@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +19,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -26,9 +28,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettings
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.WifiRequirement
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
@@ -181,7 +185,7 @@ private fun openAllFilesAccessSettings(context: android.content.Context) {
 }
 
 @Composable
-internal fun SectionCard(title: String, content: @Composable () -> Unit) {
+private fun SectionCard(title: String, content: @Composable () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -216,7 +220,7 @@ private fun FolderRow(
 }
 
 @Composable
-internal fun ToggleRow(
+private fun ToggleRow(
     label: String,
     description: String,
     checked: Boolean,

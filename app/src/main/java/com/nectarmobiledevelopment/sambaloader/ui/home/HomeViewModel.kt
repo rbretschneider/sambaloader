@@ -12,13 +12,16 @@ import com.nectarmobiledevelopment.sambaloader.core.data.health.SyncHealth
 import com.nectarmobiledevelopment.sambaloader.core.data.health.SyncHealthRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettings
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.WifiRequirement
 import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaAccess
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaAccessChecker
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaSource
+import com.nectarmobiledevelopment.sambaloader.core.network.api.NetworkConditions
 import com.nectarmobiledevelopment.sambaloader.sync.SyncTrigger
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.net.URI
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +42,7 @@ class HomeViewModel @Inject constructor(
     private val syncHealthRepository: SyncHealthRepository,
     private val mediaAccessChecker: MediaAccessChecker,
     private val mediaSource: MediaSource,
+    private val networkConditions: NetworkConditions,
     private val timeProvider: TimeProvider,
     private val syncTrigger: SyncTrigger,
 ) : ViewModel() {
@@ -58,13 +62,18 @@ class HomeViewModel @Inject constructor(
         folderNames,
     ) { values ->
         @Suppress("UNCHECKED_CAST")
+        val counts = (values[1] as List<StateCount>).associate { it.state to it.count }
+        val settings = values[2] as SyncSettings
+        @Suppress("UNCHECKED_CAST")
+        val names = values.last() as Map<String, String>
         toUiState(
             enrollment = values[0] as Enrollment?,
-            counts = (values[1] as List<StateCount>).associate { it.state to it.count },
-            settings = values[2] as SyncSettings,
+            counts = counts,
+            settings = settings,
             lastSuccessEpochMillis = values[3] as Long?,
             access = values[4] as MediaAccess,
-            folderNames = values[5] as Map<String, String>,
+            folderNames = names,
+            waitingForWifiCount = countWaitingForWifi(settings),
         )
     }.stateIn(
         scope = viewModelScope,
@@ -76,8 +85,25 @@ class HomeViewModel @Inject constructor(
             syncHealthRepository.lastSuccessEpochMillis(),
             mediaAccess.value,
             emptyMap(),
+            0,
         ),
     )
+
+    /**
+     * How many files are sitting out a metered connection because of
+     * their size. Zero on Wi-Fi — they would simply be uploading.
+     */
+    private suspend fun countWaitingForWifi(settings: SyncSettings): Int {
+        if (settings.wifiRequirement != WifiRequirement.FOR_LARGE_FILES) {
+            return 0
+        }
+        if (!networkConditions.isMetered()) {
+            return 0
+        }
+        val eligibleBefore = TimeUnit.MILLISECONDS.toSeconds(timeProvider.nowEpochMillis()) -
+            TimeUnit.MINUTES.toSeconds(settings.uploadDelayMinutes.toLong())
+        return assetRepository.countWaitingForWifi(eligibleBefore, settings.largeFileThresholdBytes)
+    }
 
     init {
         loadFolderNames()
@@ -108,6 +134,7 @@ class HomeViewModel @Inject constructor(
         lastSuccessEpochMillis: Long?,
         access: MediaAccess,
         folderNames: Map<String, String>,
+        waitingForWifiCount: Int,
     ): HomeUiState {
         fun count(state: AssetState) = counts[state] ?: 0
         return HomeUiState(
@@ -122,9 +149,11 @@ class HomeViewModel @Inject constructor(
             deletedCount = count(AssetState.DELETED_LOCALLY),
             isSyncing = count(AssetState.UPLOADING) > 0,
             backedUpFolderSummary = folderSummary(settings, folderNames),
-            isWifiOnly = settings.isWifiOnly,
+            wifiRequirement = settings.wifiRequirement,
+            largeFileThresholdMb = settings.largeFileThresholdMb,
             uploadDelayMinutes = settings.uploadDelayMinutes,
             requiresCharging = settings.requiresCharging,
+            waitingForWifiCount = waitingForWifiCount,
             mediaAccess = access,
             syncHealth = SyncHealth.evaluate(
                 lastSuccessEpochMillis = lastSuccessEpochMillis,

@@ -98,21 +98,21 @@ class SyncSettingsRepositoryTest {
 
     @Test
     fun `an existing install that allowed mobile data keeps allowing it`() {
-        store.put(mapOf("wifi_only" to "false"))
+        store.put(SyncSettingsRepository.KEY_LEGACY_WIFI_ONLY, "false")
 
         assertEquals(WifiRequirement.NEVER, SyncSettingsRepository(store).current().wifiRequirement)
     }
 
     @Test
     fun `an existing Wi-Fi-only install stays Wi-Fi-only`() {
-        store.put(mapOf("wifi_only" to "true"))
+        store.put(SyncSettingsRepository.KEY_LEGACY_WIFI_ONLY, "true")
 
         assertEquals(WifiRequirement.ALWAYS, SyncSettingsRepository(store).current().wifiRequirement)
     }
 
     @Test
     fun `an explicit choice wins over the legacy flag`() {
-        store.put(mapOf("wifi_only" to "true"))
+        store.put(SyncSettingsRepository.KEY_LEGACY_WIFI_ONLY, "true")
         SyncSettingsRepository(store).setWifiRequirement(WifiRequirement.FOR_LARGE_FILES)
 
         assertEquals(

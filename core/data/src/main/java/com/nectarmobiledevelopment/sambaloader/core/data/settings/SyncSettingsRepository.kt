@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * reads as "camera folders only").
  */
 @Singleton
+// One accessor per persisted setting; grouping them would only hide the keys.
+@Suppress("TooManyFunctions")
 class SyncSettingsRepository @Inject constructor(
     private val store: SecureKeyValueStore,
 ) {
@@ -31,8 +33,13 @@ class SyncSettingsRepository @Inject constructor(
         update(current().copy(selectedFolderIds = folderIds))
     }
 
-    fun setWifiOnly(wifiOnly: Boolean) {
-        update(current().copy(isWifiOnly = wifiOnly))
+    fun setWifiRequirement(requirement: WifiRequirement) {
+        update(current().copy(wifiRequirement = requirement))
+    }
+
+    fun setLargeFileThresholdMb(sizeMb: Int) {
+        require(sizeMb > 0) { "largeFileThresholdMb must be positive" }
+        update(current().copy(largeFileThresholdMb = sizeMb))
     }
 
     fun setRequiresCharging(requiresCharging: Boolean) {
@@ -58,7 +65,8 @@ class SyncSettingsRepository @Inject constructor(
         store.put(
             mapOf(
                 KEY_FOLDERS to settings.selectedFolderIds.joinToString(FOLDER_SEPARATOR),
-                KEY_WIFI_ONLY to settings.isWifiOnly.toString(),
+                KEY_WIFI_REQUIREMENT to settings.wifiRequirement.name,
+                KEY_LARGE_FILE_MB to settings.largeFileThresholdMb.toString(),
                 KEY_UPLOAD_DELAY to settings.uploadDelayMinutes.toString(),
                 KEY_REQUIRES_CHARGING to settings.requiresCharging.toString(),
                 KEY_DELETION_ENABLED to settings.isLocalDeletionEnabled.toString(),
@@ -75,7 +83,9 @@ class SyncSettingsRepository @Inject constructor(
                 ?.filter { it.isNotBlank() }
                 ?.toSet()
                 .orEmpty(),
-            isWifiOnly = store.get(KEY_WIFI_ONLY)?.toBoolean() ?: true,
+            wifiRequirement = loadWifiRequirement(),
+            largeFileThresholdMb = store.get(KEY_LARGE_FILE_MB)?.toIntOrNull()
+                ?: WifiRequirement.DEFAULT_LARGE_FILE_MB,
             uploadDelayMinutes = store.get(KEY_UPLOAD_DELAY)?.toIntOrNull() ?: 0,
             requiresCharging = store.get(KEY_REQUIRES_CHARGING)?.toBoolean() ?: false,
             isLocalDeletionEnabled = store.get(KEY_DELETION_ENABLED)?.toBoolean() ?: false,
@@ -84,9 +94,25 @@ class SyncSettingsRepository @Inject constructor(
         )
     }
 
+    /**
+     * Reads the policy, falling back to the older boolean setting so an
+     * existing install keeps the choice the user already made.
+     */
+    private fun loadWifiRequirement(): WifiRequirement {
+        store.get(KEY_WIFI_REQUIREMENT)
+            ?.let { stored -> WifiRequirement.entries.firstOrNull { it.name == stored } }
+            ?.let { return it }
+        val legacyWifiOnly = store.get(KEY_LEGACY_WIFI_ONLY)?.toBoolean() ?: true
+        return if (legacyWifiOnly) WifiRequirement.ALWAYS else WifiRequirement.NEVER
+    }
+
     private companion object {
         const val KEY_FOLDERS = "selected_folder_ids"
-        const val KEY_WIFI_ONLY = "wifi_only"
+        const val KEY_WIFI_REQUIREMENT = "wifi_requirement"
+        const val KEY_LARGE_FILE_MB = "large_file_threshold_mb"
+
+        /** Pre-policy setting; still honoured on upgrade. */
+        const val KEY_LEGACY_WIFI_ONLY = "wifi_only"
         const val KEY_UPLOAD_DELAY = "upload_delay_minutes"
         const val KEY_REQUIRES_CHARGING = "requires_charging"
         const val KEY_DELETION_ENABLED = "local_deletion_enabled"

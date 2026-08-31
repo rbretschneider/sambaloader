@@ -43,6 +43,9 @@ class MediaSyncWorker @AssistedInject constructor(
                 promoteToForeground(remaining = total - done)
             }
             scheduleWakeUpForHeldAssets(summary)
+            if (summary.waitingForWifi > 0) {
+                scheduler.scheduleWifiRunForLargeFiles()
+            }
             Result.success()
             // Worker boundary: any failure becomes retry/failure — a crash
             // here would take down scheduled work entirely.
