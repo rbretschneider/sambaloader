@@ -11,6 +11,12 @@ data class SyncSettings(
     val selectedFolderIds: Set<String> = emptySet(),
     /** Upload only on unmetered networks. Defaults ON: cellular data is expensive. */
     val isWifiOnly: Boolean = true,
+    /**
+     * Grace period between taking a photo and uploading it, so a bad shot
+     * can be deleted before anyone else sees it. Measured from capture
+     * time, so an existing library still backs up immediately.
+     */
+    val uploadDelayMinutes: Int = 0,
     val isLocalDeletionEnabled: Boolean = false,
     /** Days after server confirmation before the local copy is deleted. */
     val retentionDays: Int = DEFAULT_RETENTION_DAYS,
@@ -24,5 +30,8 @@ data class SyncSettings(
 
         /** Mirrors sambasync's offered choices. */
         val RETENTION_CHOICES_DAYS = listOf(0, 1, 3, 7, 14, 30)
+
+        /** 0 means upload as soon as the photo is seen. */
+        val UPLOAD_DELAY_CHOICES_MINUTES = listOf(0, 5, 10, 15, 30, 60, 90)
     }
 }

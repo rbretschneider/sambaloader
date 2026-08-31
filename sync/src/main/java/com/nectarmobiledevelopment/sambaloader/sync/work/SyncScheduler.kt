@@ -13,6 +13,7 @@ import com.nectarmobiledevelopment.sambaloader.sync.SyncTrigger
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration
 
 /**
  * All WorkManager scheduling in one place (FRD §8.6).
@@ -23,6 +24,8 @@ import javax.inject.Singleton
  * silently stops after the first photo. [MediaSyncWorker] does this;
  * never remove that call.
  */
+// One method per schedulable job; a flat scheduling surface by design.
+@Suppress("TooManyFunctions")
 @Singleton
 class SyncScheduler @Inject constructor(
     private val workManager: WorkManager,
@@ -73,6 +76,25 @@ class SyncScheduler @Inject constructor(
         workManager.enqueueUniquePeriodicWork(
             RECONCILIATION_WORK_NAME,
             ExistingPeriodicWorkPolicy.KEEP,
+            request,
+        )
+    }
+
+    /**
+     * Wakes up when a photo's upload grace period expires. Without this,
+     * a delayed photo would wait for the next content trigger or the
+     * 6-hour sweep — turning a 5-minute delay into hours.
+     */
+    fun scheduleHeldAssetRun(delay: Duration) {
+        val request = OneTimeWorkRequestBuilder<MediaSyncWorker>()
+            .setInitialDelay(delay.inWholeSeconds.coerceAtLeast(1), TimeUnit.SECONDS)
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(networkType()).build())
+            .build()
+        workManager.enqueueUniqueWork(
+            HELD_ASSET_WORK_NAME,
+            // REPLACE: the newest estimate of "when the next photo is
+            // ready" supersedes any earlier one.
+            ExistingWorkPolicy.REPLACE,
             request,
         )
     }
@@ -141,6 +163,7 @@ class SyncScheduler @Inject constructor(
         const val CONTENT_TRIGGER_WORK_NAME = "media-content-trigger"
         const val RECONCILIATION_WORK_NAME = "media-reconciliation"
         const val IMMEDIATE_WORK_NAME = "media-immediate-scan"
+        const val HELD_ASSET_WORK_NAME = "held-asset-wakeup"
         const val DELETION_WORK_NAME = "local-deletion"
         const val IMMEDIATE_DELETION_WORK_NAME = "local-deletion-now"
         const val DELETION_INTERVAL_HOURS = 24L

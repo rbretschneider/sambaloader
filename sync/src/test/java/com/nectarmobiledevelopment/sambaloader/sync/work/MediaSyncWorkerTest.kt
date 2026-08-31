@@ -59,7 +59,9 @@ class MediaSyncWorkerTest {
                 workerClassName: String,
                 workerParameters: WorkerParameters,
             ): ListenableWorker? {
-                val clock = TimeProvider { 0 }
+                // A realistic clock: at epoch 0 every asset looks like it
+                // was captured in the future and would be held forever.
+                val clock = TimeProvider { 1_756_500_000_000 }
                 val hasher = AssetHasher(media, assets, clock)
                 val uploadEngine = com.nectarmobiledevelopment.sambaloader.sync.UploadEngine(
                     assetRepository = assets,
@@ -69,6 +71,7 @@ class MediaSyncWorkerTest {
                     },
                     timeProvider = clock,
                     syncHealthRepository = SyncHealthRepository(FakeSecureKeyValueStore(), clock),
+                    settingsRepository = settings,
                 )
                 val runner = com.nectarmobiledevelopment.sambaloader.sync.SyncRunner(hasher, uploadEngine, clock)
                 val notifications = SyncNotifications(appContext)
@@ -80,7 +83,7 @@ class MediaSyncWorkerTest {
                 return when (workerClassName) {
                     MediaSyncWorker::class.java.name -> MediaSyncWorker(
                         appContext, workerParameters,
-                        effectiveScanner, runner, notifications, scheduler,
+                        effectiveScanner, runner, notifications, scheduler, settings, clock,
                     )
                     ReconciliationWorker::class.java.name -> ReconciliationWorker(
                         appContext, workerParameters,

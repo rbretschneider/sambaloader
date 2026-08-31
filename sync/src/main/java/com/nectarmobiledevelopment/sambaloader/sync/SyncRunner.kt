@@ -34,6 +34,7 @@ class SyncRunner @Inject constructor(
         var uploaded = 0
         var skipped = 0
         var rounds = 0
+        var nextHeldCaptureTime: Long? = null
 
         while (rounds < maxRounds && timeProvider.nowEpochMillis() < deadline) {
             rounds++
@@ -42,6 +43,7 @@ class SyncRunner @Inject constructor(
             hashed += hashedThisRound
             uploaded += summary.uploaded
             skipped += summary.skippedRemoteHas
+            nextHeldCaptureTime = summary.nextHeldCaptureTimeEpochSeconds
 
             val madeProgress = hashedThisRound > 0 ||
                 summary.uploaded > 0 ||
@@ -49,11 +51,11 @@ class SyncRunner @Inject constructor(
             if (!madeProgress) {
                 // Nothing left to do, or the server is unreachable —
                 // either way, stop burning battery this run.
-                return DrainSummary(hashed, uploaded, skipped, rounds, isComplete = true)
+                return DrainSummary(hashed, uploaded, skipped, rounds, true, nextHeldCaptureTime)
             }
         }
         // Budget spent with work still pending: WorkManager runs us again.
-        return DrainSummary(hashed, uploaded, skipped, rounds, isComplete = false)
+        return DrainSummary(hashed, uploaded, skipped, rounds, false, nextHeldCaptureTime)
     }
 
     companion object {
@@ -69,4 +71,9 @@ data class DrainSummary(
     val rounds: Int,
     /** False when the budget ran out before the backlog was cleared. */
     val isComplete: Boolean,
+    /**
+     * Capture time of the oldest photo still inside its upload grace
+     * period, or null if nothing is held.
+     */
+    val nextHeldCaptureTimeEpochSeconds: Long? = null,
 )

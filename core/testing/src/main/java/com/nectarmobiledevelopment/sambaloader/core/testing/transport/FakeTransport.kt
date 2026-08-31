@@ -2,6 +2,7 @@ package com.nectarmobiledevelopment.sambaloader.core.testing.transport
 
 import com.nectarmobiledevelopment.sambaloader.core.network.api.CheckResult
 import com.nectarmobiledevelopment.sambaloader.core.network.api.HealthInfo
+import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportError
 import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportResult
 import com.nectarmobiledevelopment.sambaloader.core.network.api.UploadOutcome
 import com.nectarmobiledevelopment.sambaloader.core.network.api.UploadPayload
@@ -64,6 +65,11 @@ class FakeTransport : UploadTransport {
         nextUploadResult?.invoke(payload)?.let { scripted ->
             return scripted
         }
+        // Mirrors the real transport: the body is read from the source, so
+        // a file deleted before upload fails the same way here.
+        val content = payload.openContent()
+            ?: return TransportResult.Failure(TransportError.SourceVanished)
+        content.close()
         val outcome = if (payload.sha256 in remoteHashes) {
             UploadOutcome.ALREADY_PRESENT
         } else {

@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.Flow
  * which enforces [AssetStateMachine] — never call [update] with a state
  * change directly.
  */
+// One method per query; a DAO is a flat query surface by design.
+@Suppress("TooManyFunctions")
 @Dao
 interface AssetDao {
 
@@ -27,6 +29,31 @@ interface AssetDao {
 
     @Query("SELECT * FROM assets WHERE state = :state ORDER BY capturedAtEpochSeconds ASC LIMIT :limit")
     suspend fun inState(state: AssetState, limit: Int): List<AssetEntity>
+
+    /**
+     * Assets in [state] old enough to upload under the configured grace
+     * period. Oldest capture first, so a backfill drains in order.
+     */
+    @Query(
+        "SELECT * FROM assets WHERE state = :state " +
+            "AND capturedAtEpochSeconds <= :capturedAtOrBeforeEpochSeconds " +
+            "ORDER BY capturedAtEpochSeconds ASC LIMIT :limit",
+    )
+    suspend fun inStateCapturedBefore(
+        state: AssetState,
+        capturedAtOrBeforeEpochSeconds: Long,
+        limit: Int,
+    ): List<AssetEntity>
+
+    /** Capture time of the next asset still inside its grace period. */
+    @Query(
+        "SELECT MIN(capturedAtEpochSeconds) FROM assets WHERE state = :state " +
+            "AND capturedAtEpochSeconds > :capturedAtOrBeforeEpochSeconds",
+    )
+    suspend fun earliestHeldCaptureTime(
+        state: AssetState,
+        capturedAtOrBeforeEpochSeconds: Long,
+    ): Long?
 
     @Query("SELECT COUNT(*) FROM assets WHERE state = :state")
     suspend fun countInState(state: AssetState): Int

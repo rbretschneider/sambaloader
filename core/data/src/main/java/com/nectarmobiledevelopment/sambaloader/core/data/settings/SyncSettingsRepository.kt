@@ -35,6 +35,11 @@ class SyncSettingsRepository @Inject constructor(
         update(current().copy(isWifiOnly = wifiOnly))
     }
 
+    fun setUploadDelayMinutes(minutes: Int) {
+        require(minutes >= 0) { "uploadDelayMinutes must be >= 0" }
+        update(current().copy(uploadDelayMinutes = minutes))
+    }
+
     fun setLocalDeletion(enabled: Boolean, retentionDays: Int) {
         require(retentionDays >= 0) { "retentionDays must be >= 0" }
         update(
@@ -50,6 +55,7 @@ class SyncSettingsRepository @Inject constructor(
             mapOf(
                 KEY_FOLDERS to settings.selectedFolderIds.joinToString(FOLDER_SEPARATOR),
                 KEY_WIFI_ONLY to settings.isWifiOnly.toString(),
+                KEY_UPLOAD_DELAY to settings.uploadDelayMinutes.toString(),
                 KEY_DELETION_ENABLED to settings.isLocalDeletionEnabled.toString(),
                 KEY_RETENTION_DAYS to settings.retentionDays.toString(),
             ),
@@ -65,6 +71,7 @@ class SyncSettingsRepository @Inject constructor(
                 ?.toSet()
                 .orEmpty(),
             isWifiOnly = store.get(KEY_WIFI_ONLY)?.toBoolean() ?: true,
+            uploadDelayMinutes = store.get(KEY_UPLOAD_DELAY)?.toIntOrNull() ?: 0,
             isLocalDeletionEnabled = store.get(KEY_DELETION_ENABLED)?.toBoolean() ?: false,
             retentionDays = store.get(KEY_RETENTION_DAYS)?.toIntOrNull()
                 ?: SyncSettings.DEFAULT_RETENTION_DAYS,
@@ -74,6 +81,7 @@ class SyncSettingsRepository @Inject constructor(
     private companion object {
         const val KEY_FOLDERS = "selected_folder_ids"
         const val KEY_WIFI_ONLY = "wifi_only"
+        const val KEY_UPLOAD_DELAY = "upload_delay_minutes"
         const val KEY_DELETION_ENABLED = "local_deletion_enabled"
         const val KEY_RETENTION_DAYS = "local_deletion_retention_days"
         const val FOLDER_SEPARATOR = ","

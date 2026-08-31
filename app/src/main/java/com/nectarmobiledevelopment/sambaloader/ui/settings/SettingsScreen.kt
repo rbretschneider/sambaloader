@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettings
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
@@ -49,6 +50,7 @@ fun SettingsScreen(
         ) {
             Text("Settings", style = MaterialTheme.typography.headlineSmall)
             FoldersSection(state, viewModel::toggleFolder)
+            UploadDelaySection(state.uploadDelayMinutes, viewModel::setUploadDelayMinutes)
             NetworkSection(state.isWifiOnly, viewModel::setWifiOnly)
             DeletionSection(
                 state = state,
@@ -86,6 +88,38 @@ private fun FoldersSection(
                 )
             }
         }
+    }
+}
+
+/**
+ * Grace period before a new photo is uploaded — time to delete a bad
+ * shot before anyone else sees it.
+ */
+@Composable
+private fun UploadDelaySection(delayMinutes: Int, onDelayChange: (Int) -> Unit) {
+    SectionCard(title = "Wait before uploading") {
+        Text(
+            if (delayMinutes == 0) {
+                "New photos upload as soon as they are taken."
+            } else {
+                "New photos are held on this phone for $delayMinutes minutes, so you can " +
+                    "delete a bad shot before it reaches the server."
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (minutes in SyncSettings.UPLOAD_DELAY_CHOICES_MINUTES) {
+                FilterChip(
+                    selected = delayMinutes == minutes,
+                    onClick = { onDelayChange(minutes) },
+                    label = { Text(if (minutes == 0) "Off" else "$minutes m") },
+                )
+            }
+        }
+        Text(
+            "Photos already on this phone are never held back — this only applies to new ones.",
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 

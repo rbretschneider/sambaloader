@@ -4,8 +4,13 @@ import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
+import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
 import com.nectarmobiledevelopment.sambaloader.sync.AssetScanner
+import com.nectarmobiledevelopment.sambaloader.sync.DrainSummary
 import com.nectarmobiledevelopment.sambaloader.sync.SyncRunner
+import java.util.concurrent.TimeUnit
+import kotlin.time.Duration.Companion.milliseconds
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 
@@ -25,6 +30,8 @@ class MediaSyncWorker @AssistedInject constructor(
     private val runner: SyncRunner,
     private val notifications: SyncNotifications,
     private val scheduler: SyncScheduler,
+    private val settingsRepository: SyncSettingsRepository,
+    private val timeProvider: TimeProvider,
 ) : CoroutineWorker(context, parameters) {
 
     override suspend fun doWork(): Result {
@@ -32,9 +39,10 @@ class MediaSyncWorker @AssistedInject constructor(
             scanner.scan()
             // Drains repeatedly, not just one batch: a first-run backfill
             // must not need hundreds of scheduled runs to finish.
-            runner.drain { done, total ->
+            val summary = runner.drain { done, total ->
                 promoteToForeground(remaining = total - done)
             }
+            scheduleWakeUpForHeldAssets(summary)
             Result.success()
             // Worker boundary: any failure becomes retry/failure — a crash
             // here would take down scheduled work entirely.
@@ -49,6 +57,19 @@ class MediaSyncWorker @AssistedInject constructor(
             // future detection.
             scheduler.rearmContentTriggerAfterRun()
         }
+    }
+
+    /**
+     * If a photo is waiting out its upload grace period, book a run for
+     * the moment it becomes eligible.
+     */
+    private fun scheduleWakeUpForHeldAssets(summary: DrainSummary) {
+        val heldCaptureTime = summary.nextHeldCaptureTimeEpochSeconds ?: return
+        val delayMinutes = settingsRepository.current().uploadDelayMinutes
+        val eligibleAtMillis = TimeUnit.SECONDS.toMillis(heldCaptureTime) +
+            TimeUnit.MINUTES.toMillis(delayMinutes.toLong())
+        val remaining = eligibleAtMillis - timeProvider.nowEpochMillis()
+        scheduler.scheduleHeldAssetRun(remaining.coerceAtLeast(0).milliseconds)
     }
 
     /**

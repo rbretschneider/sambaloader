@@ -7,6 +7,7 @@ data class SettingsUiState(
     val folders: List<FolderChoice> = emptyList(),
     val isLoadingFolders: Boolean = true,
     val isWifiOnly: Boolean = true,
+    val uploadDelayMinutes: Int = 0,
     val isLocalDeletionEnabled: Boolean = false,
     val retentionDays: Int = 7,
     /** True once All-files access is granted; deletion needs it. */

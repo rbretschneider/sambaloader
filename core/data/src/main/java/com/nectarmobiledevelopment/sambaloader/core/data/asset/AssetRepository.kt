@@ -38,6 +38,26 @@ class AssetRepository @Inject constructor(
         return dao.countInState(state)
     }
 
+    /** Hashed assets past their upload grace period, oldest capture first. */
+    suspend fun uploadableNow(
+        capturedAtOrBeforeEpochSeconds: Long,
+        limit: Int = DEFAULT_BATCH_LIMIT,
+    ): List<AssetEntity> {
+        return dao.inStateCapturedBefore(
+            AssetState.HASHED,
+            capturedAtOrBeforeEpochSeconds,
+            limit,
+        )
+    }
+
+    /**
+     * Capture time of the next asset still being held back, or null when
+     * nothing is waiting on the grace period.
+     */
+    suspend fun earliestHeldCaptureTime(capturedAtOrBeforeEpochSeconds: Long): Long? {
+        return dao.earliestHeldCaptureTime(AssetState.HASHED, capturedAtOrBeforeEpochSeconds)
+    }
+
     fun observeCountsByState(): Flow<List<StateCount>> {
         return dao.observeCountsByState()
     }

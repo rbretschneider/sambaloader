@@ -20,6 +20,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -55,6 +56,7 @@ class UploadEngineTest {
             transportProvider = { if (enrolled) transport else null },
             timeProvider = clock,
             syncHealthRepository = SyncHealthRepository(FakeSecureKeyValueStore(), clock),
+            settingsRepository = settings,
         )
     }
 
@@ -190,6 +192,76 @@ class UploadEngineTest {
 
         assertEquals(1, summary.uploaded)
         assertEquals(AssetState.UPLOADED, assets.byId(1)!!.state)
+    }
+
+    /** Seeds a photo "taken" [minutesAgo] minutes before now. */
+    private suspend fun seedRecent(id: Long, minutesAgo: Long) {
+        val capturedAt = nowMillis / 1000 - minutesAgo * 60
+        media.addItem(id, dateAddedEpochSeconds = capturedAt)
+        scanner.scan()
+        hasher.hashPending()
+    }
+
+    @Test
+    fun `a new photo is held for the upload grace period, then uploads`() = runTest {
+        settings.setUploadDelayMinutes(15)
+        seedRecent(1, minutesAgo = 0)
+
+        val held = engine.uploadPending()
+        assertEquals("a just-taken photo must not leave the phone yet", 0, held.uploaded)
+        assertEquals(AssetState.HASHED, assets.byId(1)!!.state)
+        assertTrue(transport.uploadedHashes.isEmpty())
+
+        nowMillis += 16 * 60 * 1000L
+        val released = engine.uploadPending()
+
+        assertEquals(1, released.uploaded)
+        assertEquals(AssetState.UPLOADED, assets.byId(1)!!.state)
+    }
+
+    @Test
+    fun `deleting a bad photo during the grace period means it never uploads`() = runTest {
+        settings.setUploadDelayMinutes(30)
+        seedRecent(1, minutesAgo = 0)
+        engine.uploadPending()
+
+        // The user deletes the bad shot before the delay expires.
+        media.vanish(1)
+        nowMillis += 31 * 60 * 1000L
+        engine.uploadPending()
+
+        assertNull("the photo is gone locally and was never sent", assets.byId(1))
+        assertTrue(transport.uploadedHashes.isEmpty())
+    }
+
+    @Test
+    fun `existing photos are never held back by the grace period`() = runTest {
+        settings.setUploadDelayMinutes(90)
+        // An old photo already in the library (a backfill).
+        seedRecent(1, minutesAgo = 60 * 24)
+
+        assertEquals(1, engine.uploadPending().uploaded)
+    }
+
+    @Test
+    fun `the engine reports when the next held photo becomes eligible`() = runTest {
+        settings.setUploadDelayMinutes(10)
+        seedRecent(1, minutesAgo = 2)
+
+        val summary = engine.uploadPending()
+
+        assertEquals(0, summary.uploaded)
+        assertEquals(
+            "the worker needs this to book its wake-up",
+            nowMillis / 1000 - 2 * 60,
+            summary.nextHeldCaptureTimeEpochSeconds,
+        )
+    }
+
+    @Test
+    fun `delay off uploads immediately - the default`() = runTest {
+        seedRecent(1, minutesAgo = 0)
+        assertEquals(1, engine.uploadPending().uploaded)
     }
 
     @Test

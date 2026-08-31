@@ -4,7 +4,9 @@ import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetEntity
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetState
 import com.nectarmobiledevelopment.sambaloader.core.data.health.SyncHealthRepository
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
+import java.util.concurrent.TimeUnit
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaItem
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaSource
 import com.nectarmobiledevelopment.sambaloader.core.network.UploadStatusMapper
@@ -23,12 +25,14 @@ import kotlin.time.Duration.Companion.minutes
  * (process death) and promoting FAILED_RETRYABLE rows whose backoff has
  * elapsed.
  */
+@Suppress("LongParameterList") // collaborators, not a call-site API
 class UploadEngine @Inject constructor(
     private val assetRepository: AssetRepository,
     private val mediaSource: MediaSource,
     private val transportProvider: TransportProvider,
     private val timeProvider: TimeProvider,
     private val syncHealthRepository: SyncHealthRepository,
+    private val settingsRepository: SyncSettingsRepository,
 ) {
 
     private val backoffPolicy = BackoffPolicy()
@@ -40,9 +44,20 @@ class UploadEngine @Inject constructor(
         recoverStaleUploads()
         promoteDueRetries()
 
-        val pending = assetRepository.inState(AssetState.HASHED, BATCH_LIMIT)
+        // Grace period (settings): a photo is not uploaded until it has
+        // survived on the phone for this long, so a bad shot can be
+        // deleted before the family sees it. Anchored to capture time, so
+        // an existing library is never held back.
+        val settings = settingsRepository.current()
+        val eligibleCapturedBefore = TimeUnit.MILLISECONDS.toSeconds(timeProvider.nowEpochMillis()) -
+            TimeUnit.MINUTES.toSeconds(settings.uploadDelayMinutes.toLong())
+
+        val pending = assetRepository.uploadableNow(eligibleCapturedBefore, BATCH_LIMIT)
         if (pending.isEmpty()) {
-            return UploadSummary()
+            return UploadSummary(
+                nextHeldCaptureTimeEpochSeconds =
+                assetRepository.earliestHeldCaptureTime(eligibleCapturedBefore),
+            )
         }
         var reachedServer = false
 
@@ -82,6 +97,8 @@ class UploadEngine @Inject constructor(
             skippedRemoteHas = skipped.size,
             failedRetryable = retryable,
             failedPermanent = permanent,
+            nextHeldCaptureTimeEpochSeconds =
+            assetRepository.earliestHeldCaptureTime(eligibleCapturedBefore),
         )
     }
 

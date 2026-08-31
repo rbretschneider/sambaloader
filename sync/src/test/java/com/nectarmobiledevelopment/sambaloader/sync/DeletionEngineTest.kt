@@ -61,7 +61,7 @@ class DeletionEngineTest {
         hasher = AssetHasher(media, assets, clock)
         uploadEngine = UploadEngine(
             assets, media, { if (enrolled) transport else null }, clock,
-            SyncHealthRepository(FakeSecureKeyValueStore(), clock),
+            SyncHealthRepository(FakeSecureKeyValueStore(), clock), settings,
         )
         engine = DeletionEngine(
             assetRepository = assets,

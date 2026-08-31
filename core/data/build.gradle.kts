@@ -31,6 +31,10 @@ kover {
                     "hilt_aggregated_deps.*",
                     "*_Factory*",
                     "*.DaggerHilt*",
+                    // Room- and Hilt-generated implementations: exercised
+                    // through the repositories, but not our code to cover.
+                    "*_Impl",
+                    "*_Impl\$*",
                 )
             }
         }

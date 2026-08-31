@@ -58,6 +58,14 @@ class SettingsViewModel @Inject constructor(
         applySettings()
     }
 
+    fun setUploadDelayMinutes(minutes: Int) {
+        settingsRepository.setUploadDelayMinutes(minutes)
+        // A shortened delay should take effect now, not at the next
+        // trigger; a lengthened one re-books the wake-up.
+        syncTrigger.syncNow()
+        applySettings()
+    }
+
     fun setLocalDeletion(enabled: Boolean) {
         settingsRepository.setLocalDeletion(enabled, settingsRepository.current().retentionDays)
         applySettings()
@@ -98,6 +106,7 @@ class SettingsViewModel @Inject constructor(
             },
             isLoadingFolders = false,
             isWifiOnly = settings.isWifiOnly,
+            uploadDelayMinutes = settings.uploadDelayMinutes,
             isLocalDeletionEnabled = settings.isLocalDeletionEnabled,
             retentionDays = settings.retentionDays,
             canDeleteSilently = mediaDeleter.canDeleteSilently(),
