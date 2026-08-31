@@ -70,18 +70,19 @@ class AssetRepositoryTest {
         repository.discover(listOf(makeAsset(1)))
         repository.markHashed(1, "aa".repeat(32))
         repository.markUploading(1, nowEpochMillis = 1000)
-        repository.markUploaded(1)
+        repository.markUploaded(1, nowEpochMillis = 2000)
 
         val asset = repository.byId(1)!!
         assertEquals(AssetState.UPLOADED, asset.state)
         assertEquals("aa".repeat(32), asset.sha256)
+        assertEquals(2000L, asset.uploadedAtEpochMillis)
         assertNull(asset.lastError)
     }
 
     @Test
     fun `illegal transitions throw instead of corrupting state`() = runTest {
         repository.discover(listOf(makeAsset(1)))
-        val failure = runCatching { repository.markUploaded(1) }.exceptionOrNull()
+        val failure = runCatching { repository.markUploaded(1, nowEpochMillis = 0) }.exceptionOrNull()
         assertEquals(IllegalStateException::class.java, failure?.javaClass)
         assertEquals(AssetState.DISCOVERED, repository.byId(1)!!.state)
     }
@@ -144,6 +145,54 @@ class AssetRepositoryTest {
         repository.discover(listOf(makeAsset(1)))
         repository.deleteVanished(1)
         assertNull(repository.byId(1))
+    }
+
+    @Test
+    fun `deletion candidates are server-confirmed assets past the threshold only`() = runTest {
+        repository.discover(listOf(makeAsset(1), makeAsset(2), makeAsset(3)))
+        for (id in 1L..3L) {
+            repository.markHashed(id, "aa".repeat(32))
+        }
+        repository.markUploading(1, nowEpochMillis = 100)
+        repository.markUploaded(1, nowEpochMillis = 1_000)
+        repository.markSkippedRemoteHas(2, nowEpochMillis = 5_000)
+        // Asset 3 stays HASHED: no server confirmation, never a candidate.
+
+        val due = repository.deletionCandidates(uploadedBeforeEpochMillis = 2_000)
+        assertEquals(listOf(1L), due.map { it.mediaStoreId })
+
+        val allConfirmed = repository.deletionCandidates(uploadedBeforeEpochMillis = 9_000)
+        assertEquals(listOf(1L, 2L), allConfirmed.map { it.mediaStoreId })
+    }
+
+    @Test
+    fun `deleted locally is a terminal tombstone`() = runTest {
+        repository.discover(listOf(makeAsset(1)))
+        repository.markHashed(1, "aa".repeat(32))
+        repository.markUploading(1, nowEpochMillis = 100)
+        repository.markUploaded(1, nowEpochMillis = 200)
+
+        repository.markDeletedLocally(1)
+
+        assertEquals(AssetState.DELETED_LOCALLY, repository.byId(1)!!.state)
+        val failure = runCatching { repository.resetToHashed(1) }.exceptionOrNull()
+        assertEquals(IllegalStateException::class.java, failure?.javaClass)
+    }
+
+    @Test
+    fun `changed content resets to discovered with hash and clock cleared`() = runTest {
+        repository.discover(listOf(makeAsset(1)))
+        repository.markHashed(1, "aa".repeat(32))
+        repository.markUploading(1, nowEpochMillis = 100)
+        repository.markUploaded(1, nowEpochMillis = 200)
+
+        repository.resetChangedContent(1)
+
+        val asset = repository.byId(1)!!
+        assertEquals(AssetState.DISCOVERED, asset.state)
+        assertNull(asset.sha256)
+        assertNull(asset.uploadedAtEpochMillis)
+        assertEquals(0, asset.attemptCount)
     }
 
     @Test

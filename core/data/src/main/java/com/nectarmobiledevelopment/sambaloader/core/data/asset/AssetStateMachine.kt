@@ -10,7 +10,10 @@ package com.nectarmobiledevelopment.sambaloader.core.data.asset
  * - `UPLOADING → HASHED` is the process-death recovery reset: a stale
  *   `UPLOADING` row found at startup is returned to the queue.
  * - `FAILED_PERMANENT → HASHED` is the user's manual retry.
- * - `UPLOADED` and `SKIPPED_REMOTE_HAS` are terminal.
+ * - `UPLOADED`/`SKIPPED_REMOTE_HAS → DELETED_LOCALLY` is the retention
+ *   deletion (D7); `→ HASHED` is "server lost it, re-upload"; and
+ *   `→ DISCOVERED` is "local content changed since upload, re-enter".
+ * - `DELETED_LOCALLY` is terminal.
  */
 object AssetStateMachine {
 
@@ -38,8 +41,17 @@ object AssetStateMachine {
         AssetState.FAILED_PERMANENT to setOf(
             AssetState.HASHED,
         ),
-        AssetState.SKIPPED_REMOTE_HAS to emptySet(),
-        AssetState.UPLOADED to emptySet(),
+        AssetState.SKIPPED_REMOTE_HAS to setOf(
+            AssetState.DELETED_LOCALLY,
+            AssetState.HASHED,
+            AssetState.DISCOVERED,
+        ),
+        AssetState.UPLOADED to setOf(
+            AssetState.DELETED_LOCALLY,
+            AssetState.HASHED,
+            AssetState.DISCOVERED,
+        ),
+        AssetState.DELETED_LOCALLY to emptySet(),
     )
 
     fun isLegal(from: AssetState, to: AssetState): Boolean {

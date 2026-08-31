@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "1e14d722841705cdb293f8078a704ac2",
+    "identityHash": "8a1b6cdcb5bb00ed8a13a296e9ae047b",
     "entities": [
       {
         "tableName": "assets",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`mediaStoreId` INTEGER NOT NULL, `sha256` TEXT, `sizeBytes` INTEGER NOT NULL, `capturedAtEpochSeconds` INTEGER NOT NULL, `displayName` TEXT NOT NULL, `mimeType` TEXT NOT NULL, `contentUri` TEXT NOT NULL, `state` TEXT NOT NULL, `attemptCount` INTEGER NOT NULL, `lastAttemptAtEpochMillis` INTEGER, `lastError` TEXT, PRIMARY KEY(`mediaStoreId`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`mediaStoreId` INTEGER NOT NULL, `sha256` TEXT, `sizeBytes` INTEGER NOT NULL, `capturedAtEpochSeconds` INTEGER NOT NULL, `displayName` TEXT NOT NULL, `mimeType` TEXT NOT NULL, `contentUri` TEXT NOT NULL, `state` TEXT NOT NULL, `attemptCount` INTEGER NOT NULL, `lastAttemptAtEpochMillis` INTEGER, `lastError` TEXT, `uploadedAtEpochMillis` INTEGER, PRIMARY KEY(`mediaStoreId`))",
         "fields": [
           {
             "fieldPath": "mediaStoreId",
@@ -73,6 +73,12 @@
             "columnName": "lastError",
             "affinity": "TEXT",
             "notNull": false
+          },
+          {
+            "fieldPath": "uploadedAtEpochMillis",
+            "columnName": "uploadedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": false
           }
         ],
         "primaryKey": {
@@ -120,7 +126,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1e14d722841705cdb293f8078a704ac2')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8a1b6cdcb5bb00ed8a13a296e9ae047b')"
     ]
   }
 }

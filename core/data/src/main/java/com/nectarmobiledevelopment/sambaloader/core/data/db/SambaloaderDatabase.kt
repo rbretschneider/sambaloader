@@ -8,6 +8,8 @@ import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetEntity
 import com.nectarmobiledevelopment.sambaloader.core.data.scan.ScanCursorDao
 import com.nectarmobiledevelopment.sambaloader.core.data.scan.ScanCursorEntity
 
+// Pre-release: schema changes collapse into version 1 until the first real
+// deploy; migrations (and their tests) begin at v2.
 @Database(
     entities = [AssetEntity::class, ScanCursorEntity::class],
     version = 1,

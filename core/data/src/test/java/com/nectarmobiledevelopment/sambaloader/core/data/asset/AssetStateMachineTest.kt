@@ -29,6 +29,14 @@ class AssetStateMachineTest {
         AssetState.FAILED_RETRYABLE to AssetState.UPLOADING,
         AssetState.FAILED_RETRYABLE to AssetState.FAILED_PERMANENT,
         AssetState.FAILED_PERMANENT to AssetState.HASHED,
+        // D7 local deletion: retention delete, server-lost re-upload, and
+        // changed-content re-entry.
+        AssetState.UPLOADED to AssetState.DELETED_LOCALLY,
+        AssetState.UPLOADED to AssetState.HASHED,
+        AssetState.UPLOADED to AssetState.DISCOVERED,
+        AssetState.SKIPPED_REMOTE_HAS to AssetState.DELETED_LOCALLY,
+        AssetState.SKIPPED_REMOTE_HAS to AssetState.HASHED,
+        AssetState.SKIPPED_REMOTE_HAS to AssetState.DISCOVERED,
     )
 
     @Test
@@ -46,10 +54,9 @@ class AssetStateMachineTest {
     }
 
     @Test
-    fun `terminal states allow no outgoing transitions`() {
+    fun `deleted locally is the only terminal state`() {
         for (to in AssetState.entries) {
-            assertFalse(AssetStateMachine.isLegal(AssetState.UPLOADED, to))
-            assertFalse(AssetStateMachine.isLegal(AssetState.SKIPPED_REMOTE_HAS, to))
+            assertFalse(AssetStateMachine.isLegal(AssetState.DELETED_LOCALLY, to))
         }
     }
 

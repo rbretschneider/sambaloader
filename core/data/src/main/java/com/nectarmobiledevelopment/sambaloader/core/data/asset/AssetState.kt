@@ -12,4 +12,11 @@ enum class AssetState {
     UPLOADED,
     FAILED_RETRYABLE,
     FAILED_PERMANENT,
+
+    /**
+     * The local copy was deleted after the retention period, with the
+     * server re-confirming it held the content first (decision D7).
+     * Terminal tombstone.
+     */
+    DELETED_LOCALLY,
 }

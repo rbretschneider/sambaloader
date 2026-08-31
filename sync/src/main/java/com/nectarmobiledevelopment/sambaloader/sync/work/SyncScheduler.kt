@@ -70,6 +70,29 @@ class SyncScheduler @Inject constructor(
         )
     }
 
+    /** Daily local-deletion pass (D7); KEEP-idempotent. */
+    fun scheduleDailyDeletion() {
+        val request = PeriodicWorkRequestBuilder<DeletionWorker>(
+            DELETION_INTERVAL_HOURS,
+            TimeUnit.HOURS,
+        ).build()
+        workManager.enqueueUniquePeriodicWork(
+            DELETION_WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            request,
+        )
+    }
+
+    /** Debug/manual: run the deletion pass right now. */
+    fun triggerImmediateDeletion() {
+        val request = OneTimeWorkRequestBuilder<DeletionWorker>().build()
+        workManager.enqueueUniqueWork(
+            IMMEDIATE_DELETION_WORK_NAME,
+            ExistingWorkPolicy.REPLACE,
+            request,
+        )
+    }
+
     /** Debug/manual: run a scan right now, no content trigger needed. */
     fun triggerImmediateScan() {
         val request = OneTimeWorkRequestBuilder<MediaSyncWorker>().build()
@@ -84,6 +107,9 @@ class SyncScheduler @Inject constructor(
         const val CONTENT_TRIGGER_WORK_NAME = "media-content-trigger"
         const val RECONCILIATION_WORK_NAME = "media-reconciliation"
         const val IMMEDIATE_WORK_NAME = "media-immediate-scan"
+        const val DELETION_WORK_NAME = "local-deletion"
+        const val IMMEDIATE_DELETION_WORK_NAME = "local-deletion-now"
+        const val DELETION_INTERVAL_HOURS = 24L
         const val TRIGGER_UPDATE_DELAY_SECONDS = 10L
         const val TRIGGER_MAX_DELAY_MINUTES = 5L
         const val RECONCILIATION_INTERVAL_HOURS = 6L

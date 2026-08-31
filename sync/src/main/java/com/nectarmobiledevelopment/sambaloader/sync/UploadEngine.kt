@@ -110,7 +110,10 @@ class UploadEngine @Inject constructor(
         }
         for (asset in pending) {
             if (asset.sha256 in have) {
-                assetRepository.markSkippedRemoteHas(asset.mediaStoreId)
+                assetRepository.markSkippedRemoteHas(
+                    asset.mediaStoreId,
+                    nowEpochMillis = timeProvider.nowEpochMillis(),
+                )
             }
         }
         return have
@@ -124,7 +127,10 @@ class UploadEngine @Inject constructor(
         val result = transport.upload(asset.toPayload())
         return when (result) {
             is TransportResult.Success -> {
-                assetRepository.markUploaded(asset.mediaStoreId)
+                assetRepository.markUploaded(
+                    asset.mediaStoreId,
+                    nowEpochMillis = timeProvider.nowEpochMillis(),
+                )
                 UploadDisposition.UPLOADED
             }
             is TransportResult.Failure -> handleFailure(asset, result.error)

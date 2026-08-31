@@ -11,6 +11,14 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 
+    <!-- All-files access (same route as sambasync): required ONLY for the
+         optional local-deletion feature (D7), so the retention pass can
+         delete silently from the background. Granted by the user on the
+         system settings page; deletion stays off without it. -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+
     <!-- Upload runs as a dataSync foreground service (FRD 8.8). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />

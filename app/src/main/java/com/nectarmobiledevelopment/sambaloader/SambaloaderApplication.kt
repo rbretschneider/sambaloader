@@ -27,5 +27,6 @@ class SambaloaderApplication : Application(), Configuration.Provider {
         // both are KEEP-idempotent.
         syncScheduler.armContentTrigger()
         syncScheduler.schedulePeriodicReconciliation()
+        syncScheduler.scheduleDailyDeletion()
     }
 }

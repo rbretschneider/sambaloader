@@ -7,6 +7,13 @@ plugins {
 
 android {
     namespace = "com.nectarmobiledevelopment.sambaloader.core.data"
+
+    sourceSets {
+        getByName("test") {
+            // Exported Room schemas feed MigrationTestHelper.
+            assets.srcDir("$projectDir/schemas")
+        }
+    }
 }
 
 kover {

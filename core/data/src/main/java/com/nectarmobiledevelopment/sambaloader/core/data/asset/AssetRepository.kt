@@ -57,8 +57,11 @@ class AssetRepository @Inject constructor(
         }
     }
 
-    suspend fun markSkippedRemoteHas(mediaStoreId: Long) {
-        transition(mediaStoreId, AssetState.SKIPPED_REMOTE_HAS)
+    suspend fun markSkippedRemoteHas(mediaStoreId: Long, nowEpochMillis: Long) {
+        transition(mediaStoreId, AssetState.SKIPPED_REMOTE_HAS) {
+            // Server confirmed it holds the content: retention clock starts.
+            it.copy(uploadedAtEpochMillis = nowEpochMillis)
+        }
     }
 
     suspend fun markUploading(mediaStoreId: Long, nowEpochMillis: Long) {
@@ -67,9 +70,9 @@ class AssetRepository @Inject constructor(
         }
     }
 
-    suspend fun markUploaded(mediaStoreId: Long) {
+    suspend fun markUploaded(mediaStoreId: Long, nowEpochMillis: Long) {
         transition(mediaStoreId, AssetState.UPLOADED) {
-            it.copy(lastError = null)
+            it.copy(lastError = null, uploadedAtEpochMillis = nowEpochMillis)
         }
     }
 
@@ -92,6 +95,29 @@ class AssetRepository @Inject constructor(
     /** Manual or scheduled retry: FAILED_* / UPLOADING back to HASHED. */
     suspend fun resetToHashed(mediaStoreId: Long) {
         transition(mediaStoreId, AssetState.HASHED)
+    }
+
+    /** Assets whose retention has elapsed, eligible for local deletion (D7). */
+    suspend fun deletionCandidates(
+        uploadedBeforeEpochMillis: Long,
+        limit: Int = DEFAULT_BATCH_LIMIT,
+    ): List<AssetEntity> {
+        return dao.deletionCandidates(uploadedBeforeEpochMillis, limit)
+    }
+
+    /** Local copy deleted after server re-confirmation (D7). Terminal. */
+    suspend fun markDeletedLocally(mediaStoreId: Long) {
+        transition(mediaStoreId, AssetState.DELETED_LOCALLY)
+    }
+
+    /**
+     * Local bytes no longer match the stored hash — the asset re-enters
+     * the pipeline from scratch and is NOT deleted (D7 safety).
+     */
+    suspend fun resetChangedContent(mediaStoreId: Long) {
+        transition(mediaStoreId, AssetState.DISCOVERED) {
+            it.copy(sha256 = null, uploadedAtEpochMillis = null, attemptCount = 0)
+        }
     }
 
     /**

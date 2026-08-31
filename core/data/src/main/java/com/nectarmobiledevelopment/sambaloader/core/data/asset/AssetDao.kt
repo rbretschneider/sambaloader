@@ -42,4 +42,13 @@ interface AssetDao {
 
     @Query("SELECT mediaStoreId FROM assets")
     suspend fun allIds(): List<Long>
+
+    /** Server-confirmed assets whose retention clock has elapsed (D7). */
+    @Query(
+        "SELECT * FROM assets WHERE state IN ('UPLOADED', 'SKIPPED_REMOTE_HAS') " +
+            "AND uploadedAtEpochMillis IS NOT NULL " +
+            "AND uploadedAtEpochMillis <= :uploadedBeforeEpochMillis " +
+            "ORDER BY uploadedAtEpochMillis ASC LIMIT :limit",
+    )
+    suspend fun deletionCandidates(uploadedBeforeEpochMillis: Long, limit: Int): List<AssetEntity>
 }

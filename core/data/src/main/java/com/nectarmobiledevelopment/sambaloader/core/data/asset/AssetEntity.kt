@@ -28,4 +28,9 @@ data class AssetEntity(
     val attemptCount: Int,
     val lastAttemptAtEpochMillis: Long?,
     val lastError: String?,
+    /**
+     * When the server confirmed holding this content (upload or dedupe
+     * skip). Starts the local-deletion retention clock (decision D7).
+     */
+    val uploadedAtEpochMillis: Long? = null,
 )

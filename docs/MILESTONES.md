@@ -18,6 +18,7 @@ These amend or resolve open items in the FRD:
 | D4 | Videos treated identically to photos; whole-file upload with retry. tus deferred to v2. `UploadTransport` interface keeps the seam. | FRD recommendation. |
 | D5 | **Container host ≠ NAS.** The compose stack runs on a separate server; the NAS library is passed in as a volume (network mount). | User's actual deployment. Consequences: `Put()` must do temp-write + `fsync` + `rename` *within the mounted filesystem*; the spec must warn that atomic rename is only guaranteed on NFS (SMB mounts rename non-atomically) and must document PUID/PGID mapping through the mount. |
 | D6 | Dev/test environment: physical Android device (sideload), Android emulator on this Windows PC, Docker Desktop available. | Shapes every "How you test it" section below. |
+| D7 | **Local deletion after retention** (added post-M4, mirroring sambasync): a successfully uploaded/deduped asset is flagged; a daily background pass deletes it X days later (configurable; default off). Safety exceeds sambasync: at deletion time the server must re-confirm it holds the exact hash (unreachable server ⇒ no deletions; server lost it ⇒ re-upload), and the local bytes are re-hashed (changed content ⇒ re-enter pipeline, no delete). Failed uploads are never flagged. Silent background deletion uses All-files access (`MANAGE_EXTERNAL_STORAGE`), same as sambasync; without the grant, files simply stay pending. |
 
 ---
 
