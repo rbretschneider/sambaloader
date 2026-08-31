@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # rolling deploy-bundle release
   packages: write
 
 jobs:
@@ -50,3 +50,18 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Publish rolling deploy bundle
+        # Everything a deploy host needs, no clone required:
+        #   gh release download server-deploy -R ${{ github.repository }}
+        if: github.ref == 'refs/heads/master'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tar -czf sambaloader-server.tar.gz -C server \
+            docker-compose.yml .env.example README.md nginx ca
+          gh release view server-deploy >/dev/null 2>&1 || \
+            gh release create server-deploy --prerelease \
+              --title "Server deploy bundle (rolling)" \
+              --notes "Rolling bundle of server/ config: compose, nginx, CA scripts. Updated on every master push touching server/. The uploadd image itself lives at ghcr.io/${{ github.repository }}/uploadd."
+          gh release upload server-deploy sambaloader-server.tar.gz --clobber

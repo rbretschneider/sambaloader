@@ -13,6 +13,9 @@ services:
     restart: unless-stopped
 
   uploadd:
+    # `docker compose up -d` pulls the published image (after
+    # `docker login ghcr.io`); developers rebuild locally with `--build`.
+    image: ghcr.io/rbretschneider/sambaloader/uploadd:latest
     build: ./uploadd
     # NO ports: mapping. This is a security control, not an oversight:
     # uploadd must be reachable only through nginx on the internal bridge
