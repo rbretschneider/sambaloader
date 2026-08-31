@@ -48,6 +48,7 @@ class SyncScheduler @Inject constructor(
     }
 
     private fun enqueueContentTrigger(policy: ExistingWorkPolicy) {
+        val settings = settingsRepository.current()
         val constraints = Constraints.Builder()
             .addContentUriTrigger(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true)
             .addContentUriTrigger(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
@@ -55,6 +56,7 @@ class SyncScheduler @Inject constructor(
             .setTriggerContentUpdateDelay(TRIGGER_UPDATE_DELAY_SECONDS, TimeUnit.SECONDS)
             .setTriggerContentMaxDelay(TRIGGER_MAX_DELAY_MINUTES, TimeUnit.MINUTES)
             .setRequiredNetworkType(networkType())
+            .setRequiresCharging(settings.requiresCharging)
             .build()
         val request = OneTimeWorkRequestBuilder<MediaSyncWorker>()
             .setConstraints(constraints)
@@ -71,7 +73,7 @@ class SyncScheduler @Inject constructor(
             RECONCILIATION_INTERVAL_HOURS,
             TimeUnit.HOURS,
         )
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(networkType()).build())
+            .setConstraints(scheduledConstraints())
             .build()
         workManager.enqueueUniquePeriodicWork(
             RECONCILIATION_WORK_NAME,
@@ -88,7 +90,7 @@ class SyncScheduler @Inject constructor(
     fun scheduleHeldAssetRun(delay: Duration) {
         val request = OneTimeWorkRequestBuilder<MediaSyncWorker>()
             .setInitialDelay(delay.inWholeSeconds.coerceAtLeast(1), TimeUnit.SECONDS)
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(networkType()).build())
+            .setConstraints(scheduledConstraints())
             .build()
         workManager.enqueueUniqueWork(
             HELD_ASSET_WORK_NAME,
@@ -104,7 +106,10 @@ class SyncScheduler @Inject constructor(
         val request = PeriodicWorkRequestBuilder<DeletionWorker>(
             DELETION_INTERVAL_HOURS,
             TimeUnit.HOURS,
-        ).build()
+        )
+            // Deletion re-verifies against the server, so it needs the network.
+            .setConstraints(scheduledConstraints())
+            .build()
         workManager.enqueueUniquePeriodicWork(
             DELETION_WORK_NAME,
             ExistingPeriodicWorkPolicy.KEEP,
@@ -132,6 +137,17 @@ class SyncScheduler @Inject constructor(
         } else {
             NetworkType.CONNECTED
         }
+    }
+
+    /**
+     * Constraints for scheduled (background) work. User-initiated runs
+     * deliberately carry none of these — "Back up now" must always work.
+     */
+    private fun scheduledConstraints(): Constraints {
+        return Constraints.Builder()
+            .setRequiredNetworkType(networkType())
+            .setRequiresCharging(settingsRepository.current().requiresCharging)
+            .build()
     }
 
     /**

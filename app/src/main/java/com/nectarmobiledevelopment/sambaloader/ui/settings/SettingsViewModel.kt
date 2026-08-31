@@ -58,6 +58,13 @@ class SettingsViewModel @Inject constructor(
         applySettings()
     }
 
+    fun setRequiresCharging(requiresCharging: Boolean) {
+        settingsRepository.setRequiresCharging(requiresCharging)
+        // Armed work carries the OLD constraints until replaced.
+        syncTrigger.reapplyConstraints()
+        applySettings()
+    }
+
     fun setUploadDelayMinutes(minutes: Int) {
         settingsRepository.setUploadDelayMinutes(minutes)
         // A shortened delay should take effect now, not at the next
@@ -107,6 +114,7 @@ class SettingsViewModel @Inject constructor(
             isLoadingFolders = false,
             isWifiOnly = settings.isWifiOnly,
             uploadDelayMinutes = settings.uploadDelayMinutes,
+            requiresCharging = settings.requiresCharging,
             isLocalDeletionEnabled = settings.isLocalDeletionEnabled,
             retentionDays = settings.retentionDays,
             canDeleteSilently = mediaDeleter.canDeleteSilently(),

@@ -16,9 +16,14 @@ data class HomeUiState(
     val isSyncing: Boolean,
     val backedUpFolderSummary: String,
     val isWifiOnly: Boolean,
+    val uploadDelayMinutes: Int,
+    val requiresCharging: Boolean,
     val mediaAccess: MediaAccess,
     val syncHealth: SyncHealth,
 ) {
+
+    val uploadDelaySummary: String
+        get() = if (uploadDelayMinutes == 0) "Off" else "$uploadDelayMinutes min"
     val statusMessage: String
         get() = when {
             !isEnrolled -> "Not paired with a server yet"

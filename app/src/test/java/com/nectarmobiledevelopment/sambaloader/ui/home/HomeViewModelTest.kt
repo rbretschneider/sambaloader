@@ -12,6 +12,7 @@ import com.nectarmobiledevelopment.sambaloader.core.data.identity.Enrollment
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaAccess
 import com.nectarmobiledevelopment.sambaloader.core.testing.data.FakeIdentityRepository
+import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeMediaSource
 import com.nectarmobiledevelopment.sambaloader.core.testing.data.FakeSecureKeyValueStore
 import com.nectarmobiledevelopment.sambaloader.core.testing.sync.FakeSyncTrigger
 import kotlinx.coroutines.Dispatchers
@@ -61,6 +62,7 @@ class HomeViewModelTest {
 
     private var mediaAccess = MediaAccess.FULL
     private var nowMillis = 1_756_500_000_000L
+    private val media = FakeMediaSource()
 
     private fun viewModel() = HomeViewModel(
         identityRepository = identity,
@@ -68,6 +70,7 @@ class HomeViewModelTest {
         settingsRepository = settings,
         syncHealthRepository = health,
         mediaAccessChecker = { mediaAccess },
+        mediaSource = media,
         timeProvider = { nowMillis },
         syncTrigger = syncTrigger,
     )
@@ -156,11 +159,47 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `defaults surface as camera-only on wifi`() {
+    fun `defaults surface as camera-only on wifi, no delay, no charger needed`() {
         enroll()
         val state = viewModel().uiState.value
-        assertEquals("Camera only (default)", state.backedUpFolderSummary)
+        assertEquals("Camera (default)", state.backedUpFolderSummary)
         assertTrue(state.isWifiOnly)
+        assertEquals("Off", state.uploadDelaySummary)
+        assertFalse(state.requiresCharging)
+    }
+
+    @Test
+    fun `the config summary names the folders actually being backed up`() = runTest {
+        enroll()
+        media.addItem(1, bucketId = "camera")
+        media.addItem(2, bucketId = "screenshots")
+        media.nameFolder("screenshots", "Screenshots")
+        settings.setSelectedFolders(setOf("camera", "screenshots"))
+        settings.setUploadDelayMinutes(15)
+        settings.setRequiresCharging(true)
+
+        val viewModel = viewModel()
+        val state = viewModel.uiState.first { it.backedUpFolderSummary.contains("Screenshots") }
+
+        assertEquals("Camera, Screenshots", state.backedUpFolderSummary)
+        assertEquals("15 min", state.uploadDelaySummary)
+        assertTrue(state.requiresCharging)
+    }
+
+    @Test
+    fun `many selected folders are truncated rather than filling the screen`() = runTest {
+        enroll()
+        val ids = (1..6).map { "folder$it" }
+        ids.forEachIndexed { index, id ->
+            media.addItem(index + 10L, bucketId = id)
+            media.nameFolder(id, "Folder $index")
+        }
+        settings.setSelectedFolders(ids.toSet())
+
+        val viewModel = viewModel()
+        val state = viewModel.uiState.first { it.backedUpFolderSummary.contains("more") }
+
+        assertTrue(state.backedUpFolderSummary.endsWith("+3 more"))
     }
 
     @Test

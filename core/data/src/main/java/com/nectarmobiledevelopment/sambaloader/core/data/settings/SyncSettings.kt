@@ -12,6 +12,11 @@ data class SyncSettings(
     /** Upload only on unmetered networks. Defaults ON: cellular data is expensive. */
     val isWifiOnly: Boolean = true,
     /**
+     * Only run scheduled backups while charging. Off by default — waiting
+     * for a charger can mean photos sit unbacked-up all day.
+     */
+    val requiresCharging: Boolean = false,
+    /**
      * Grace period between taking a photo and uploading it, so a bad shot
      * can be deleted before anyone else sees it. Measured from capture
      * time, so an existing library still backs up immediately.

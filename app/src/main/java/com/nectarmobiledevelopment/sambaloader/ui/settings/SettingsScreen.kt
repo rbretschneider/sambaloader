@@ -51,7 +51,12 @@ fun SettingsScreen(
             Text("Settings", style = MaterialTheme.typography.headlineSmall)
             FoldersSection(state, viewModel::toggleFolder)
             UploadDelaySection(state.uploadDelayMinutes, viewModel::setUploadDelayMinutes)
-            NetworkSection(state.isWifiOnly, viewModel::setWifiOnly)
+            NetworkSection(
+                isWifiOnly = state.isWifiOnly,
+                onWifiOnlyChange = viewModel::setWifiOnly,
+                requiresCharging = state.requiresCharging,
+                onRequiresChargingChange = viewModel::setRequiresCharging,
+            )
             DeletionSection(
                 state = state,
                 onToggle = viewModel::setLocalDeletion,
@@ -124,16 +129,27 @@ private fun UploadDelaySection(delayMinutes: Int, onDelayChange: (Int) -> Unit) 
 }
 
 @Composable
-private fun NetworkSection(isWifiOnly: Boolean, onWifiOnlyChange: (Boolean) -> Unit) {
-    SectionCard(title = "Network") {
+private fun NetworkSection(
+    isWifiOnly: Boolean,
+    onWifiOnlyChange: (Boolean) -> Unit,
+    requiresCharging: Boolean,
+    onRequiresChargingChange: (Boolean) -> Unit,
+) {
+    SectionCard(title = "When to back up") {
         ToggleRow(
             label = "Wi-Fi only",
             description = "Never spend cellular data on backups.",
             checked = isWifiOnly,
             onCheckedChange = onWifiOnlyChange,
         )
+        ToggleRow(
+            label = "Only while charging",
+            description = "Saves battery, but photos wait until you plug in.",
+            checked = requiresCharging,
+            onCheckedChange = onRequiresChargingChange,
+        )
         Text(
-            "\"Back up now\" on the home screen always runs, regardless of this setting.",
+            "\"Back up now\" on the home screen always runs, regardless of these settings.",
             style = MaterialTheme.typography.bodySmall,
         )
     }

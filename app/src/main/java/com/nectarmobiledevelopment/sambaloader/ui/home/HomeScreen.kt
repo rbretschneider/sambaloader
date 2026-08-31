@@ -87,6 +87,7 @@ fun HomeScreen(
                 }
             } else {
                 StatusCard(uiState)
+                ConfigCard(uiState)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(onClick = viewModel::syncNow) {
                         Text("Back up now")
@@ -172,6 +173,7 @@ private fun StatusCard(uiState: HomeUiState) {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            Text("Status", style = MaterialTheme.typography.titleSmall)
             StatusRow("Backed up", uiState.uploadedCount.toString())
             StatusRow("Waiting", uiState.pendingCount.toString())
             if (uiState.failedCount > 0) {
@@ -180,19 +182,41 @@ private fun StatusCard(uiState: HomeUiState) {
             if (uiState.deletedCount > 0) {
                 StatusRow("Freed on this phone", uiState.deletedCount.toString())
             }
-            StatusRow("Backing up", uiState.backedUpFolderSummary)
-            StatusRow("Network", if (uiState.isWifiOnly) "Wi-Fi only" else "Wi-Fi or cellular")
         }
     }
 }
+
+/** The current configuration, visible without opening Settings. */
+@Composable
+private fun ConfigCard(uiState: HomeUiState) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text("Configuration", style = MaterialTheme.typography.titleSmall)
+            StatusRow("Folders", uiState.backedUpFolderSummary)
+            StatusRow("Delay", uiState.uploadDelaySummary)
+            StatusRow("Wi-Fi only", uiState.isWifiOnly.asYesNo())
+            StatusRow("Charging required", uiState.requiresCharging.asYesNo())
+        }
+    }
+}
+
+private fun Boolean.asYesNo(): String = if (this) "Yes" else "No"
 
 @Composable
 private fun StatusRow(label: String, value: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(text = label, style = MaterialTheme.typography.bodyMedium)
-        Text(text = value, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+            textAlign = TextAlign.End,
+        )
     }
 }
