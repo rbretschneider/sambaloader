@@ -37,6 +37,13 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
                     sourceCompatibility = JavaVersion.VERSION_17
                     targetCompatibility = JavaVersion.VERSION_17
                 }
+                testOptions {
+                    unitTests {
+                        // Robolectric tests (JUnit 4 via the vintage engine)
+                        // need manifest/resources on the test classpath.
+                        isIncludeAndroidResources = true
+                    }
+                }
             }
 
             tasks.withType<KotlinCompile>().configureEach {

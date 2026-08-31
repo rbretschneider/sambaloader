@@ -9,6 +9,7 @@ android {
 dependencies {
     api(project(":core:crypto"))
     api(project(":core:data"))
+    api(project(":core:media"))
     api(project(":core:network"))
     implementation(libs.gson)
     implementation(libs.kotlinx.coroutines.core)

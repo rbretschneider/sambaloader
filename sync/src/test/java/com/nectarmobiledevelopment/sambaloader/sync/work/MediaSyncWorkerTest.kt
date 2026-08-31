@@ -1,0 +1,229 @@
+package com.nectarmobiledevelopment.sambaloader.sync.work
+
+import android.content.Context
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import androidx.work.Configuration
+import androidx.work.ListenableWorker
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.WorkerFactory
+import androidx.work.WorkerParameters
+import androidx.work.testing.SynchronousExecutor
+import androidx.work.testing.WorkManagerTestInitHelper
+import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetRepository
+import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetState
+import com.nectarmobiledevelopment.sambaloader.core.data.db.SambaloaderDatabase
+import com.nectarmobiledevelopment.sambaloader.core.data.scan.ScanCursorRepository
+import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
+import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeMediaSource
+import com.nectarmobiledevelopment.sambaloader.sync.AssetHasher
+import com.nectarmobiledevelopment.sambaloader.sync.AssetScanner
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+
+@RunWith(RobolectricTestRunner::class)
+class MediaSyncWorkerTest {
+
+    private lateinit var context: Context
+    private lateinit var db: SambaloaderDatabase
+    private lateinit var assets: AssetRepository
+    private val media = FakeMediaSource()
+    private lateinit var workManager: WorkManager
+    private lateinit var scheduler: SyncScheduler
+    private var scannerThrows = false
+
+    @Before
+    fun setUp() {
+        context = ApplicationProvider.getApplicationContext()
+        db = Room.inMemoryDatabaseBuilder(context, SambaloaderDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        assets = AssetRepository(db.assetDao())
+        val cursor = ScanCursorRepository(db.scanCursorDao())
+        val scanner = object : AssetScanner(media, assets, cursor) {}
+
+        val factory = object : WorkerFactory() {
+            override fun createWorker(
+                appContext: Context,
+                workerClassName: String,
+                workerParameters: WorkerParameters,
+            ): ListenableWorker? {
+                val hasher = AssetHasher(media, assets, TimeProvider { 0 })
+                val effectiveScanner = if (scannerThrows) {
+                    ThrowingScanner(media, assets, cursor)
+                } else {
+                    scanner
+                }
+                return when (workerClassName) {
+                    MediaSyncWorker::class.java.name ->
+                        MediaSyncWorker(appContext, workerParameters, effectiveScanner, hasher, scheduler)
+                    ReconciliationWorker::class.java.name ->
+                        ReconciliationWorker(appContext, workerParameters, effectiveScanner, hasher, scheduler)
+                    else -> null
+                }
+            }
+        }
+
+        val configuration = Configuration.Builder()
+            .setExecutor(SynchronousExecutor())
+            .setWorkerFactory(factory)
+            .build()
+        WorkManagerTestInitHelper.initializeTestWorkManager(context, configuration)
+        workManager = WorkManager.getInstance(context)
+        scheduler = SyncScheduler(workManager)
+    }
+
+    @After
+    fun tearDown() {
+        db.close()
+    }
+
+    private class ThrowingScanner(
+        media: FakeMediaSource,
+        assets: AssetRepository,
+        cursor: ScanCursorRepository,
+    ) : AssetScanner(media, assets, cursor) {
+        override suspend fun scan(force: Boolean): com.nectarmobiledevelopment.sambaloader.sync.ScanResult {
+            error("injected scan failure")
+        }
+    }
+
+    private fun runContentTriggeredWorker() {
+        scheduler.armContentTrigger()
+        val info = workManager
+            .getWorkInfosForUniqueWork(SyncScheduler.CONTENT_TRIGGER_WORK_NAME)
+            .get()
+            .single()
+        WorkManagerTestInitHelper.getTestDriver(context)!!.setAllConstraintsMet(info.id)
+        awaitTerminal(info.id)
+    }
+
+    /**
+     * CoroutineWorkers run on a background dispatcher even under the
+     * synchronous executor — wait for the run to actually finish.
+     */
+    private fun awaitTerminal(id: java.util.UUID) {
+        val deadline = System.currentTimeMillis() + AWAIT_TIMEOUT_MILLIS
+        while (System.currentTimeMillis() < deadline) {
+            // WorkManager posts completion to the main looper, which is
+            // this test thread under Robolectric — keep it draining.
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            val state = workManager.getWorkInfoById(id).get()?.state
+            if (state != null && state.isFinished) {
+                return
+            }
+            Thread.sleep(AWAIT_POLL_MILLIS)
+        }
+        error("worker $id did not finish within ${AWAIT_TIMEOUT_MILLIS}ms")
+    }
+
+    /** Periodic work never reaches a terminal state; poll the outcome. */
+    private fun awaitPeriodicRunComplete() {
+        val deadline = System.currentTimeMillis() + AWAIT_TIMEOUT_MILLIS
+        while (System.currentTimeMillis() < deadline) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            val state = kotlinx.coroutines.runBlocking { assets.byId(5)?.state }
+            if (state == AssetState.HASHED) {
+                return
+            }
+            Thread.sleep(AWAIT_POLL_MILLIS)
+        }
+        error("reconciliation run did not complete within ${AWAIT_TIMEOUT_MILLIS}ms")
+    }
+
+    private companion object {
+        const val AWAIT_TIMEOUT_MILLIS = 10_000L
+        const val AWAIT_POLL_MILLIS = 50L
+    }
+
+    @Test
+    fun `worker re-enqueues the content trigger after every run - the highest-value test`() = runBlocking<Unit> {
+        media.addItem(1, dateAddedEpochSeconds = 100)
+        runContentTriggeredWorker()
+
+        // The run itself happened...
+        assertEquals(AssetState.HASHED, assets.byId(1)!!.state)
+
+        // ...and a FRESH request is armed under the unique name, waiting on
+        // its content trigger. Without the re-enqueue there would be no
+        // ENQUEUED request and detection would be dead.
+        val states = workManager
+            .getWorkInfosForUniqueWork(SyncScheduler.CONTENT_TRIGGER_WORK_NAME)
+            .get()
+            .map { it.state }
+        assertTrue("expected a re-armed request, got $states", WorkInfo.State.ENQUEUED in states)
+    }
+
+    @Test
+    fun `even a crashing run re-arms detection`() {
+        scannerThrows = true
+        scheduler.armContentTrigger()
+        val info = workManager
+            .getWorkInfosForUniqueWork(SyncScheduler.CONTENT_TRIGGER_WORK_NAME)
+            .get()
+            .single()
+        WorkManagerTestInitHelper.getTestDriver(context)!!.setAllConstraintsMet(info.id)
+
+        // The failed run resolves to a retry (or an appended re-arm) — in
+        // both shapes an ENQUEUED request must exist: detection stays alive.
+        val deadline = System.currentTimeMillis() + AWAIT_TIMEOUT_MILLIS
+        while (System.currentTimeMillis() < deadline) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            val infos = workManager
+                .getWorkInfosForUniqueWork(SyncScheduler.CONTENT_TRIGGER_WORK_NAME)
+                .get()
+            val rearmed = infos.any {
+                it.state == WorkInfo.State.ENQUEUED &&
+                    (it.runAttemptCount > 0 || it.id != info.id)
+            }
+            if (rearmed) {
+                return
+            }
+            Thread.sleep(AWAIT_POLL_MILLIS)
+        }
+        error("detection was not re-armed after a crashing run")
+    }
+
+    @Test
+    fun `immediate scan runs the pipeline without a content trigger`() = runBlocking<Unit> {
+        media.addItem(1, dateAddedEpochSeconds = 100)
+        scheduler.triggerImmediateScan()
+        val info = workManager
+            .getWorkInfosForUniqueWork(SyncScheduler.IMMEDIATE_WORK_NAME)
+            .get()
+            .single()
+        awaitTerminal(info.id)
+
+        assertEquals(AssetState.HASHED, assets.byId(1)!!.state)
+    }
+
+    @Test
+    fun `reconciliation catches assets the content trigger missed`() = runBlocking<Unit> {
+        // Simulate a trigger miss: item exists but nothing ran, and its
+        // DATE_ADDED is below an already-advanced watermark.
+        media.addItem(5, dateAddedEpochSeconds = 50)
+        db.scanCursorDao().put(
+            com.nectarmobiledevelopment.sambaloader.core.data.scan.ScanCursorEntity(
+                lastDateAddedEpochSeconds = 100,
+                lastGeneration = null,
+            ),
+        )
+
+        scheduler.schedulePeriodicReconciliation()
+        val info = workManager
+            .getWorkInfosForUniqueWork(SyncScheduler.RECONCILIATION_WORK_NAME)
+            .get()
+            .single()
+        WorkManagerTestInitHelper.getTestDriver(context)!!.setPeriodDelayMet(info.id)
+        awaitPeriodicRunComplete()
+
+        assertEquals(AssetState.HASHED, assets.byId(5)!!.state)
+    }
+}
