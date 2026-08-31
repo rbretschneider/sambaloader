@@ -70,7 +70,11 @@ jobs:
       - name: Restore signing keystore
         run: |
           mkdir -p keystore
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > keystore/release.jks
+          # tr strips any stray CR/LF a secret may carry from the tool that
+          # uploaded it; base64 -d rejects those outright.
+          printf '%s' "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\r\n' | base64 -d > keystore/release.jks
+          keytool -list -keystore keystore/release.jks \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" >/dev/null
 
       - name: Assemble signed release APK
         run: ./gradlew assembleRelease
