@@ -31,3 +31,15 @@ devserver/ca/out/
 
 # Compiled dev tools
 *.exe
+
+# Server runtime material — generated per-deployment, never committed
+server/ca/ca.key
+server/ca/ca.crt
+server/ca/ca.srl
+server/ca/server.key
+server/ca/server.crt
+server/ca/crl.pem
+server/ca/.crldb/
+server/state/
+server/library/
+server/.env

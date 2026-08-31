@@ -162,6 +162,13 @@ be implemented in v1 of the backend.
 ### 4.1 API listener — `nginx/api.conf`
 
 ```nginx
+# nginx has NO built-in $ssl_client_s_dn_cn variable (the FRD's snippet
+# assumed one; nginx refuses to start). Extract the CN from the full DN:
+map $ssl_client_s_dn $client_cert_cn {
+    default "";
+    "~CN=(?<cn>[^,]+)" $cn;
+}
+
 server {
     listen 443 ssl;
     http2 on;
@@ -183,7 +190,7 @@ server {
 
     location /api/ {
         proxy_pass http://uploadd:8080;
-        proxy_set_header X-Device-CN     $ssl_client_s_dn_cn;
+        proxy_set_header X-Device-CN     $client_cert_cn;
         proxy_set_header X-Device-Serial $ssl_client_serial;
         proxy_read_timeout 600s;
         proxy_send_timeout 600s;

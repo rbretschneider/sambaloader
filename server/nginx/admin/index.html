@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sambaloader admin</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 44rem; margin: 3rem auto; padding: 0 1rem; }
+  code { background: #eee; padding: .15rem .35rem; border-radius: 4px; }
+  button { font-size: 1rem; padding: .5rem 1rem; }
+  table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+  th, td { text-align: left; border-bottom: 1px solid #ddd; padding: .4rem; font-size: .9rem; }
+  .warn { color: #b00020; font-weight: 600; }
+  .fp { font-family: monospace; word-break: break-all; }
+</style>
+
+<h1>Sambaloader admin</h1>
+<p class="warn">Never forward port 8443 on your router — anyone who can reach this page can enroll a device.</p>
+
+<h2>Enroll a device</h2>
+<p>Before enrolling: restore <code>ca.key</code> into the server's <code>ca/</code> directory.
+   Remove it again when you're done.</p>
+<button id="enroll">Enroll a device</button>
+<div id="out"></div>
+
+<h2>Devices</h2>
+<p>To revoke a lost device: restore <code>ca.key</code>, then run
+   <code>./ca/revoke.sh &lt;serial&gt;</code> on the server.</p>
+<table id="devices"><tr><th>Label</th><th>CN</th><th>Serial</th><th>Last seen</th><th>Assets</th><th>Status</th></tr></table>
+
+<script>
+document.getElementById('enroll').onclick = async () => {
+  const out = document.getElementById('out');
+  const response = await fetch('/enroll/begin', { method: 'POST' });
+  if (!response.ok) { out.textContent = 'Failed: ' + response.status; return; }
+  const payload = await response.json();
+  const encoded = btoa(JSON.stringify(payload))
+    .replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+  out.innerHTML =
+    '<p>1. In the app, tap <b>Pair with server</b> and scan this code.</p>' +
+    '<img src="/qr?d=' + encoded + '" width="360" height="360" alt="enrollment QR">' +
+    '<p>2. Confirm the fingerprint in the app matches <b>exactly</b>:</p>' +
+    '<p class="fp">' + payload.ca_fingerprint + '</p>' +
+    '<p>Token <code>' + payload.token + '</code> is single-use and expires in 10 minutes.</p>';
+};
+
+async function loadDevices() {
+  const response = await fetch('/admin/devices');
+  if (!response.ok) return;
+  const { devices } = await response.json();
+  const table = document.getElementById('devices');
+  const when = (t) => t ? new Date(t * 1000).toLocaleString() : '—';
+  for (const d of devices) {
+    const row = table.insertRow();
+    row.innerHTML =
+      '<td>' + d.label + '</td><td>' + d.cn + '</td><td class="fp">' + d.serial +
+      '</td><td>' + when(d.last_seen_at) + '</td><td>' + d.assets_total +
+      '</td><td>' + (d.revoked_at ? '<span class="warn">revoked</span>' : 'active') + '</td>';
+  }
+}
+loadDevices();
+</script>

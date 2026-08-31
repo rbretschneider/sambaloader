@@ -1,0 +1,34 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "443:443"
+      - "8443:8443"   # LAN only — NEVER forward this port on the router
+    volumes:
+      - ./nginx/api.conf:/etc/nginx/conf.d/api.conf:ro
+      - ./nginx/admin.conf:/etc/nginx/conf.d/admin.conf:ro
+      - ./nginx/admin:/usr/share/nginx/admin:ro
+      - ./ca:/etc/nginx/ca:ro
+    depends_on: [uploadd]
+    restart: unless-stopped
+
+  uploadd:
+    build: ./uploadd
+    # NO ports: mapping. This is a security control, not an oversight:
+    # uploadd must be reachable only through nginx on the internal bridge
+    # (SERVER_SPEC §1.2 rule 6).
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      - LIBRARY_PATH=/library
+      - DB_PATH=/state/uploadd.db
+      - CA_DIR=/ca
+      - PUBLIC_URL=${PUBLIC_URL:-https://localhost}
+    volumes:
+      # The NAS mount on the host (NFS recommended; see README for the
+      # SMB caveats). Files land owned by PUID:PGID above.
+      - ${LIBRARY_PATH:-./library}:/library
+      - ./state:/state
+      # rw: uploadd writes crl.pem on revocation. ca.key lives here ONLY
+      # during enrollment/revocation windows (mode (a), SERVER_SPEC §3.5).
+      - ./ca:/ca
+    restart: unless-stopped
