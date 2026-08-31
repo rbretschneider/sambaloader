@@ -50,6 +50,7 @@ object PairingMessages {
             is TransportError.Network ->
                 "Could not reach the server. Make sure this phone is on the same network."
             TransportError.Timeout -> "The server took too long to respond. Try again."
+            TransportError.SourceVanished -> "A local file disappeared during the operation."
             is TransportError.HttpError -> "The server answered with an error (${error.statusCode})."
             is TransportError.MalformedResponse -> "The server sent an unusable response."
         }

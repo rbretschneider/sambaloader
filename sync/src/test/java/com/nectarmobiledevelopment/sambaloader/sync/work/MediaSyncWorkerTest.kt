@@ -55,17 +55,31 @@ class MediaSyncWorkerTest {
                 workerClassName: String,
                 workerParameters: WorkerParameters,
             ): ListenableWorker? {
-                val hasher = AssetHasher(media, assets, TimeProvider { 0 })
+                val clock = TimeProvider { 0 }
+                val hasher = AssetHasher(media, assets, clock)
+                val uploadEngine = com.nectarmobiledevelopment.sambaloader.sync.UploadEngine(
+                    assetRepository = assets,
+                    mediaSource = media,
+                    transportProvider = {
+                        com.nectarmobiledevelopment.sambaloader.core.testing.transport.FakeTransport()
+                    },
+                    timeProvider = clock,
+                )
+                val notifications = SyncNotifications(appContext)
                 val effectiveScanner = if (scannerThrows) {
                     ThrowingScanner(media, assets, cursor)
                 } else {
                     scanner
                 }
                 return when (workerClassName) {
-                    MediaSyncWorker::class.java.name ->
-                        MediaSyncWorker(appContext, workerParameters, effectiveScanner, hasher, scheduler)
-                    ReconciliationWorker::class.java.name ->
-                        ReconciliationWorker(appContext, workerParameters, effectiveScanner, hasher, scheduler)
+                    MediaSyncWorker::class.java.name -> MediaSyncWorker(
+                        appContext, workerParameters,
+                        effectiveScanner, hasher, uploadEngine, notifications, scheduler,
+                    )
+                    ReconciliationWorker::class.java.name -> ReconciliationWorker(
+                        appContext, workerParameters,
+                        effectiveScanner, hasher, uploadEngine, scheduler,
+                    )
                     else -> null
                 }
             }
@@ -130,7 +144,7 @@ class MediaSyncWorkerTest {
         while (System.currentTimeMillis() < deadline) {
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
             val state = kotlinx.coroutines.runBlocking { assets.byId(5)?.state }
-            if (state == AssetState.HASHED) {
+            if (state == AssetState.UPLOADED) {
                 return
             }
             Thread.sleep(AWAIT_POLL_MILLIS)
@@ -149,7 +163,7 @@ class MediaSyncWorkerTest {
         runContentTriggeredWorker()
 
         // The run itself happened...
-        assertEquals(AssetState.HASHED, assets.byId(1)!!.state)
+        assertEquals(AssetState.UPLOADED, assets.byId(1)!!.state)
 
         // ...and a FRESH request is armed under the unique name, waiting on
         // its content trigger. Without the re-enqueue there would be no
@@ -201,7 +215,7 @@ class MediaSyncWorkerTest {
             .single()
         awaitTerminal(info.id)
 
-        assertEquals(AssetState.HASHED, assets.byId(1)!!.state)
+        assertEquals(AssetState.UPLOADED, assets.byId(1)!!.state)
     }
 
     @Test
@@ -224,6 +238,6 @@ class MediaSyncWorkerTest {
         WorkManagerTestInitHelper.getTestDriver(context)!!.setPeriodDelayMet(info.id)
         awaitPeriodicRunComplete()
 
-        assertEquals(AssetState.HASHED, assets.byId(5)!!.state)
+        assertEquals(AssetState.UPLOADED, assets.byId(5)!!.state)
     }
 }

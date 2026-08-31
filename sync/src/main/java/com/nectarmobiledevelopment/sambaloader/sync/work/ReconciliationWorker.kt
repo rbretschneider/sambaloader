@@ -6,6 +6,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.nectarmobiledevelopment.sambaloader.sync.AssetHasher
 import com.nectarmobiledevelopment.sambaloader.sync.AssetScanner
+import com.nectarmobiledevelopment.sambaloader.sync.UploadEngine
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 
@@ -20,6 +21,7 @@ class ReconciliationWorker @AssistedInject constructor(
     @Assisted parameters: WorkerParameters,
     private val scanner: AssetScanner,
     private val hasher: AssetHasher,
+    private val uploadEngine: UploadEngine,
     private val scheduler: SyncScheduler,
 ) : CoroutineWorker(context, parameters) {
 
@@ -27,6 +29,7 @@ class ReconciliationWorker @AssistedInject constructor(
         return try {
             scanner.scan(force = true)
             hasher.hashPending()
+            uploadEngine.uploadPending()
             Result.success()
             // Worker boundary: retry is the complete handling here.
         } catch (

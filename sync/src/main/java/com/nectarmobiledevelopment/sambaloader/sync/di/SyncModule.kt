@@ -17,3 +17,13 @@ internal object SyncModule {
         return WorkManager.getInstance(context)
     }
 }
+
+@Module
+@InstallIn(SingletonComponent::class)
+internal abstract class SyncBindingsModule {
+
+    @dagger.Binds
+    abstract fun bindTransportProvider(
+        impl: com.nectarmobiledevelopment.sambaloader.sync.EnrolledTransportProvider,
+    ): com.nectarmobiledevelopment.sambaloader.sync.TransportProvider
+}
