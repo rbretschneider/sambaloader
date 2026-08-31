@@ -26,4 +26,9 @@ internal abstract class SyncBindingsModule {
     abstract fun bindTransportProvider(
         impl: com.nectarmobiledevelopment.sambaloader.sync.EnrolledTransportProvider,
     ): com.nectarmobiledevelopment.sambaloader.sync.TransportProvider
+
+    @dagger.Binds
+    abstract fun bindSyncTrigger(
+        impl: com.nectarmobiledevelopment.sambaloader.sync.work.SyncScheduler,
+    ): com.nectarmobiledevelopment.sambaloader.sync.SyncTrigger
 }

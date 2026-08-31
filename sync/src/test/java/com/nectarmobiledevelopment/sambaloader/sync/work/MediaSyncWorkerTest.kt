@@ -15,7 +15,9 @@ import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetState
 import com.nectarmobiledevelopment.sambaloader.core.data.db.SambaloaderDatabase
 import com.nectarmobiledevelopment.sambaloader.core.data.scan.ScanCursorRepository
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
+import com.nectarmobiledevelopment.sambaloader.core.testing.data.FakeSecureKeyValueStore
 import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeMediaSource
 import com.nectarmobiledevelopment.sambaloader.sync.AssetHasher
 import com.nectarmobiledevelopment.sambaloader.sync.AssetScanner
@@ -37,6 +39,7 @@ class MediaSyncWorkerTest {
     private val media = FakeMediaSource()
     private lateinit var workManager: WorkManager
     private lateinit var scheduler: SyncScheduler
+    private val settings = SyncSettingsRepository(FakeSecureKeyValueStore())
     private var scannerThrows = false
 
     @Before
@@ -47,7 +50,7 @@ class MediaSyncWorkerTest {
             .build()
         assets = AssetRepository(db.assetDao())
         val cursor = ScanCursorRepository(db.scanCursorDao())
-        val scanner = object : AssetScanner(media, assets, cursor) {}
+        val scanner = object : AssetScanner(media, assets, cursor, settings) {}
 
         val factory = object : WorkerFactory() {
             override fun createWorker(
@@ -67,7 +70,7 @@ class MediaSyncWorkerTest {
                 )
                 val notifications = SyncNotifications(appContext)
                 val effectiveScanner = if (scannerThrows) {
-                    ThrowingScanner(media, assets, cursor)
+                    ThrowingScanner(media, assets, cursor, settings)
                 } else {
                     scanner
                 }
@@ -91,7 +94,7 @@ class MediaSyncWorkerTest {
             .build()
         WorkManagerTestInitHelper.initializeTestWorkManager(context, configuration)
         workManager = WorkManager.getInstance(context)
-        scheduler = SyncScheduler(workManager)
+        scheduler = SyncScheduler(workManager, settings)
     }
 
     @After
@@ -103,7 +106,8 @@ class MediaSyncWorkerTest {
         media: FakeMediaSource,
         assets: AssetRepository,
         cursor: ScanCursorRepository,
-    ) : AssetScanner(media, assets, cursor) {
+        settings: SyncSettingsRepository,
+    ) : AssetScanner(media, assets, cursor, settings) {
         override suspend fun scan(force: Boolean): com.nectarmobiledevelopment.sambaloader.sync.ScanResult {
             error("injected scan failure")
         }
@@ -235,6 +239,9 @@ class MediaSyncWorkerTest {
             .getWorkInfosForUniqueWork(SyncScheduler.RECONCILIATION_WORK_NAME)
             .get()
             .single()
+        // Reconciliation now carries a network constraint (Wi-Fi-only by
+        // default), so the harness must satisfy it as well as the delay.
+        WorkManagerTestInitHelper.getTestDriver(context)!!.setAllConstraintsMet(info.id)
         WorkManagerTestInitHelper.getTestDriver(context)!!.setPeriodDelayMet(info.id)
         awaitPeriodicRunComplete()
 

@@ -25,4 +25,10 @@ interface MediaSource {
      * null where unsupported — callers must then always scan.
      */
     fun currentGeneration(): Long?
+
+    /**
+     * Every folder holding media, newest activity first — the source of
+     * the "what should I back up?" list.
+     */
+    fun folders(): List<MediaFolder>
 }

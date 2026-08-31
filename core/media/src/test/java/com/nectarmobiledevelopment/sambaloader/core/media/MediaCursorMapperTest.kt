@@ -21,7 +21,10 @@ class MediaCursorMapperTest {
     @Test
     fun `maps a complete row including the content uri`() {
         val cursor = makeCursor(
-            arrayOf(42L, "IMG_001.jpg", "image/jpeg", 16_611L, 1_718_460_197L, 1_718_460_197_000L),
+            arrayOf(
+                42L, "IMG_001.jpg", "image/jpeg", 16_611L,
+                1_718_460_197L, 1_718_460_197_000L, "bucket-1", "Camera",
+            ),
         )
         val item = MediaCursorMapper.map(cursor, collection).single()
 
@@ -36,16 +39,17 @@ class MediaCursorMapperTest {
     @Test
     fun `date taken in millis wins over date added`() {
         val cursor = makeCursor(
-            arrayOf(1L, "a.jpg", "image/jpeg", 1L, 2_000L, 1_000_000L),
+            arrayOf(1L, "a.jpg", "image/jpeg", 1L, 2_000L, 1_000_000L, "bucket-1", "Camera"),
         )
-        assertEquals(1_000L, MediaCursorMapper.map(cursor, collection).single().capturedAtEpochSeconds)
+        val item = MediaCursorMapper.map(cursor, collection).single()
+        assertEquals(1_000L, item.capturedAtEpochSeconds)
     }
 
     @Test
     fun `missing or zero date taken falls back to date added`() {
         val cursor = makeCursor(
-            arrayOf(1L, "a.jpg", "image/jpeg", 1L, 2_000L, null),
-            arrayOf(2L, "b.jpg", "image/jpeg", 1L, 3_000L, 0L),
+            arrayOf(1L, "a.jpg", "image/jpeg", 1L, 2_000L, null, "bucket-1", "Camera"),
+            arrayOf(2L, "b.jpg", "image/jpeg", 1L, 3_000L, 0L, "bucket-1", "Camera"),
         )
         val items = MediaCursorMapper.map(cursor, collection)
         assertEquals(2_000L, items[0].capturedAtEpochSeconds)
@@ -55,7 +59,7 @@ class MediaCursorMapperTest {
     @Test
     fun `null display name and mime type get safe defaults`() {
         val cursor = makeCursor(
-            arrayOf(7L, null, null, 1L, 2_000L, null),
+            arrayOf(7L, null, null, 1L, 2_000L, null, "bucket-1", "Camera"),
         )
         val item = MediaCursorMapper.map(cursor, collection).single()
         assertEquals("unnamed-7", item.displayName)

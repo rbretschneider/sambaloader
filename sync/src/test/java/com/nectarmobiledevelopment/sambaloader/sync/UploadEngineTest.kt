@@ -7,9 +7,11 @@ import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetState
 import com.nectarmobiledevelopment.sambaloader.core.data.db.SambaloaderDatabase
 import com.nectarmobiledevelopment.sambaloader.core.data.scan.ScanCursorRepository
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
 import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportError
 import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportResult
+import com.nectarmobiledevelopment.sambaloader.core.testing.data.FakeSecureKeyValueStore
 import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeMediaSource
 import com.nectarmobiledevelopment.sambaloader.core.testing.transport.FakeTransport
 import kotlinx.coroutines.test.runTest
@@ -31,6 +33,7 @@ class UploadEngineTest {
     private val transport = FakeTransport()
     private var enrolled = true
     private var nowMillis = 1_756_500_000_000L
+    private val settings = SyncSettingsRepository(FakeSecureKeyValueStore())
     private lateinit var scanner: AssetScanner
     private lateinit var hasher: AssetHasher
     private lateinit var engine: UploadEngine
@@ -43,7 +46,7 @@ class UploadEngineTest {
             .build()
         assets = AssetRepository(db.assetDao())
         val clock = TimeProvider { nowMillis }
-        scanner = AssetScanner(media, assets, ScanCursorRepository(db.scanCursorDao()))
+        scanner = AssetScanner(media, assets, ScanCursorRepository(db.scanCursorDao()), settings)
         hasher = AssetHasher(media, assets, clock)
         engine = UploadEngine(
             assetRepository = assets,

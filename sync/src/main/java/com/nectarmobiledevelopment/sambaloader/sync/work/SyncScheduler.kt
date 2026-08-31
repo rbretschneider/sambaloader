@@ -4,9 +4,12 @@ import android.provider.MediaStore
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
+import com.nectarmobiledevelopment.sambaloader.sync.SyncTrigger
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,7 +26,8 @@ import javax.inject.Singleton
 @Singleton
 class SyncScheduler @Inject constructor(
     private val workManager: WorkManager,
-) {
+    private val settingsRepository: SyncSettingsRepository,
+) : SyncTrigger {
 
     /** App-startup arming: keeps an already-armed trigger untouched. */
     fun armContentTrigger() {
@@ -47,6 +51,7 @@ class SyncScheduler @Inject constructor(
             // Batch a burst of shots into one run instead of twenty.
             .setTriggerContentUpdateDelay(TRIGGER_UPDATE_DELAY_SECONDS, TimeUnit.SECONDS)
             .setTriggerContentMaxDelay(TRIGGER_MAX_DELAY_MINUTES, TimeUnit.MINUTES)
+            .setRequiredNetworkType(networkType())
             .build()
         val request = OneTimeWorkRequestBuilder<MediaSyncWorker>()
             .setConstraints(constraints)
@@ -62,7 +67,9 @@ class SyncScheduler @Inject constructor(
         val request = PeriodicWorkRequestBuilder<ReconciliationWorker>(
             RECONCILIATION_INTERVAL_HOURS,
             TimeUnit.HOURS,
-        ).build()
+        )
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(networkType()).build())
+            .build()
         workManager.enqueueUniquePeriodicWork(
             RECONCILIATION_WORK_NAME,
             ExistingPeriodicWorkPolicy.KEEP,
@@ -93,7 +100,34 @@ class SyncScheduler @Inject constructor(
         )
     }
 
-    /** Debug/manual: run a scan right now, no content trigger needed. */
+    /**
+     * Wi-Fi-only (the default) maps to UNMETERED so cellular data is never
+     * spent on backups; otherwise any connection will do.
+     */
+    private fun networkType(): NetworkType {
+        return if (settingsRepository.current().isWifiOnly) {
+            NetworkType.UNMETERED
+        } else {
+            NetworkType.CONNECTED
+        }
+    }
+
+    /**
+     * Re-applies constraints after a settings change (e.g. the user turns
+     * Wi-Fi-only off) — the armed trigger carries the OLD constraints
+     * until it is replaced.
+     */
+    override fun reapplyConstraints() {
+        enqueueContentTrigger(ExistingWorkPolicy.REPLACE)
+        workManager.cancelUniqueWork(RECONCILIATION_WORK_NAME)
+        schedulePeriodicReconciliation()
+    }
+
+    override fun syncNow() {
+        triggerImmediateScan()
+    }
+
+    /** User-initiated sync: runs regardless of the Wi-Fi-only setting. */
     fun triggerImmediateScan() {
         val request = OneTimeWorkRequestBuilder<MediaSyncWorker>().build()
         workManager.enqueueUniqueWork(

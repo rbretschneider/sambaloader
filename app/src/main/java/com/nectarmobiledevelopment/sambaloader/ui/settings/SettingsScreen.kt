@@ -1,0 +1,215 @@
+package com.nectarmobiledevelopment.sambaloader.ui.settings
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
+@Composable
+fun SettingsScreen(
+    onBack: () -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    Scaffold { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(20.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Text("Settings", style = MaterialTheme.typography.headlineSmall)
+            FoldersSection(state, viewModel::toggleFolder)
+            NetworkSection(state.isWifiOnly, viewModel::setWifiOnly)
+            DeletionSection(
+                state = state,
+                onToggle = viewModel::setLocalDeletion,
+                onRetentionChange = viewModel::setRetentionDays,
+                onGrantAccess = { openAllFilesAccessSettings(context) },
+            )
+            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
+                Text("Done")
+            }
+        }
+    }
+}
+
+@Composable
+private fun FoldersSection(
+    state: SettingsUiState,
+    onToggle: (String, Boolean) -> Unit,
+) {
+    SectionCard(title = "Folders to back up") {
+        if (state.isUsingDefaultFolders) {
+            Text(
+                "Backing up your camera folders. Tap any folder to change this.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        when {
+            state.isLoadingFolders -> CircularProgressIndicator()
+            state.folders.isEmpty() ->
+                Text("No media folders found. Grant photo access, then reopen this screen.")
+            else -> for (choice in state.folders) {
+                FolderRow(
+                    choice = choice,
+                    onToggle = { selected -> onToggle(choice.folder.bucketId, selected) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NetworkSection(isWifiOnly: Boolean, onWifiOnlyChange: (Boolean) -> Unit) {
+    SectionCard(title = "Network") {
+        ToggleRow(
+            label = "Wi-Fi only",
+            description = "Never spend cellular data on backups.",
+            checked = isWifiOnly,
+            onCheckedChange = onWifiOnlyChange,
+        )
+        Text(
+            "\"Back up now\" on the home screen always runs, regardless of this setting.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun DeletionSection(
+    state: SettingsUiState,
+    onToggle: (Boolean) -> Unit,
+    onRetentionChange: (Int) -> Unit,
+    onGrantAccess: () -> Unit,
+) {
+    SectionCard(title = "Free up space on this phone") {
+        ToggleRow(
+            label = "Delete local copies after backup",
+            description = "Only after the server confirms it has the exact file.",
+            checked = state.isLocalDeletionEnabled,
+            onCheckedChange = onToggle,
+        )
+        if (!state.isLocalDeletionEnabled) {
+            return@SectionCard
+        }
+        Text("Wait ${state.retentionDays} day(s) before deleting:")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (days in RETENTION_CHOICES) {
+                FilterChip(
+                    selected = state.retentionDays == days,
+                    onClick = { onRetentionChange(days) },
+                    label = { Text(if (days == 0) "Now" else "$days d") },
+                )
+            }
+        }
+        if (!state.canDeleteSilently) {
+            Text(
+                "Needs \"All files access\" to delete in the background. " +
+                    "Nothing is deleted until you grant it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            OutlinedButton(onClick = onGrantAccess) {
+                Text("Grant all-files access")
+            }
+        }
+    }
+}
+
+private fun openAllFilesAccessSettings(context: android.content.Context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        context.startActivity(
+            Intent(
+                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                Uri.parse("package:${context.packageName}"),
+            ),
+        )
+    }
+}
+
+@Composable
+private fun SectionCard(title: String, content: @Composable () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            HorizontalDivider()
+            content()
+        }
+    }
+}
+
+@Composable
+private fun FolderRow(
+    choice: SettingsUiState.FolderChoice,
+    onToggle: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(choice.folder.displayName, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "${choice.folder.itemCount} item(s)",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(checked = choice.isSelected, onCheckedChange = onToggle)
+    }
+}
+
+@Composable
+private fun ToggleRow(
+    label: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            Text(description, style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+private val RETENTION_CHOICES = listOf(0, 1, 3, 7, 14, 30)

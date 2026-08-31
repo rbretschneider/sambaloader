@@ -4,6 +4,7 @@ import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetEntity
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetState
 import com.nectarmobiledevelopment.sambaloader.core.data.scan.ScanCursorRepository
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaKind
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaSource
 import javax.inject.Inject
@@ -20,6 +21,7 @@ open class AssetScanner @Inject constructor(
     private val mediaSource: MediaSource,
     private val assetRepository: AssetRepository,
     private val cursorRepository: ScanCursorRepository,
+    private val settingsRepository: SyncSettingsRepository,
 ) {
 
     /**
@@ -35,8 +37,10 @@ open class AssetScanner @Inject constructor(
         }
 
         val since = if (force) FULL_SCAN_WATERMARK else cursor.lastDateAddedEpochSeconds
+        val backedUpFolders = backedUpFolderIds()
         val items = mediaSource.itemsAddedSince(since)
             .filter { MediaKind.fromMimeType(it.mimeType) != MediaKind.UNSUPPORTED }
+            .filter { it.bucketId in backedUpFolders }
 
         val knownIds = assetRepository.knownIds()
         val fresh = items.filter { it.mediaStoreId !in knownIds }
@@ -69,6 +73,22 @@ open class AssetScanner @Inject constructor(
             generation = generation,
         )
         return ScanResult(discovered = fresh.size, skippedByGeneration = false)
+    }
+
+    /**
+     * Folders to back up. Until the user chooses, this is the device's
+     * camera folders only — never the whole device, so screenshots and
+     * chat media are not silently uploaded.
+     */
+    private fun backedUpFolderIds(): Set<String> {
+        val selected = settingsRepository.current().selectedFolderIds
+        if (selected.isNotEmpty()) {
+            return selected
+        }
+        return mediaSource.folders()
+            .filter { it.isLikelyCameraRoll }
+            .map { it.bucketId }
+            .toSet()
     }
 
     private companion object {

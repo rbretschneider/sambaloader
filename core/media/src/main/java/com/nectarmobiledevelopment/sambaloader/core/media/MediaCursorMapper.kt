@@ -18,6 +18,7 @@ object MediaCursorMapper {
         val sizeColumn = cursor.getColumnIndexOrThrow(MediaColumns.SIZE)
         val addedColumn = cursor.getColumnIndexOrThrow(MediaColumns.DATE_ADDED)
         val takenColumn = cursor.getColumnIndexOrThrow(MediaColumns.DATE_TAKEN)
+        val bucketColumn = cursor.getColumnIndex(MediaColumns.BUCKET_ID)
 
         val items = mutableListOf<MediaItem>()
         while (cursor.moveToNext()) {
@@ -39,6 +40,11 @@ object MediaCursorMapper {
                 capturedAtEpochSeconds = capturedAt,
                 dateAddedEpochSeconds = dateAdded,
                 contentUri = ContentUris.withAppendedId(collectionUri, id).toString(),
+                bucketId = if (bucketColumn >= 0 && !cursor.isNull(bucketColumn)) {
+                    cursor.getString(bucketColumn)
+                } else {
+                    ""
+                },
             )
         }
         return items

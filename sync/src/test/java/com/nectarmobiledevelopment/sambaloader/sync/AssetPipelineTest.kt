@@ -8,11 +8,14 @@ import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetState
 import com.nectarmobiledevelopment.sambaloader.core.data.db.SambaloaderDatabase
 import com.nectarmobiledevelopment.sambaloader.core.data.scan.ScanCursorRepository
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
+import com.nectarmobiledevelopment.sambaloader.core.testing.data.FakeSecureKeyValueStore
 import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeMediaSource
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -31,6 +34,7 @@ class AssetPipelineTest {
     private lateinit var assets: AssetRepository
     private lateinit var cursor: ScanCursorRepository
     private val media = FakeMediaSource()
+    private val settings = SyncSettingsRepository(FakeSecureKeyValueStore())
     private lateinit var scanner: AssetScanner
     private lateinit var hasher: AssetHasher
 
@@ -42,7 +46,7 @@ class AssetPipelineTest {
             .build()
         assets = AssetRepository(db.assetDao())
         cursor = ScanCursorRepository(db.scanCursorDao())
-        scanner = AssetScanner(media, assets, cursor)
+        scanner = AssetScanner(media, assets, cursor, settings)
         hasher = AssetHasher(media, assets, TimeProvider { 1_756_500_000_000 })
     }
 
@@ -169,5 +173,49 @@ class AssetPipelineTest {
         scanner.scan()
         assertEquals(1, hasher.hashPending())
         assertEquals(0, hasher.hashPending())
+    }
+
+    @Test
+    fun `by default only camera folders are backed up, not the whole device`() = runTest {
+        media.addItem(1, dateAddedEpochSeconds = 100)
+        media.addItem(2, dateAddedEpochSeconds = 101, bucketId = "screenshots")
+        media.nameFolder("screenshots", "Screenshots")
+        media.addItem(3, dateAddedEpochSeconds = 102, bucketId = "whatsapp")
+        media.nameFolder("whatsapp", "WhatsApp Images")
+
+        val result = scanner.scan()
+
+        assertEquals(1, result.discovered)
+        assertEquals(AssetState.DISCOVERED, assets.byId(1)!!.state)
+        assertNull("screenshots must not be backed up by default", assets.byId(2))
+        assertNull("chat media must not be backed up by default", assets.byId(3))
+    }
+
+    @Test
+    fun `an explicit folder choice replaces the camera default`() = runTest {
+        media.addItem(1, dateAddedEpochSeconds = 100)
+        media.addItem(2, dateAddedEpochSeconds = 101, bucketId = "screenshots")
+        media.nameFolder("screenshots", "Screenshots")
+
+        settings.setSelectedFolders(setOf("screenshots"))
+        scanner.scan()
+
+        assertNull("camera is no longer selected", assets.byId(1))
+        assertEquals(AssetState.DISCOVERED, assets.byId(2)!!.state)
+    }
+
+    @Test
+    fun `folders lists every bucket with counts for the settings screen`() = runTest {
+        media.addItem(1, dateAddedEpochSeconds = 100)
+        media.addItem(2, dateAddedEpochSeconds = 101)
+        media.addItem(3, dateAddedEpochSeconds = 102, bucketId = "screenshots")
+        media.nameFolder("screenshots", "Screenshots")
+
+        val folders = media.folders().associateBy { it.displayName }
+
+        assertEquals(2, folders.getValue("Camera").itemCount)
+        assertEquals(1, folders.getValue("Screenshots").itemCount)
+        assertTrue(folders.getValue("Camera").isLikelyCameraRoll)
+        assertFalse(folders.getValue("Screenshots").isLikelyCameraRoll)
     }
 }

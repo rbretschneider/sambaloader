@@ -11,6 +11,7 @@ dependencies {
     api(project(":core:data"))
     api(project(":core:media"))
     api(project(":core:network"))
+    api(project(":sync"))
     implementation(libs.gson)
     implementation(libs.kotlinx.coroutines.core)
     api(libs.okhttp.tls)

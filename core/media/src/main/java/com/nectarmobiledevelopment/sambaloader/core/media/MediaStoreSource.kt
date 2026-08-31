@@ -19,11 +19,7 @@ class MediaStoreSource @Inject constructor(
 ) : MediaSource {
 
     override fun itemsAddedSince(dateAddedEpochSeconds: Long): List<MediaItem> {
-        val collections = listOf(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-        )
-        return collections
+        return mediaCollections()
             .flatMap { collection -> query(collection, dateAddedEpochSeconds) }
             .sortedBy { it.dateAddedEpochSeconds }
     }
@@ -55,6 +51,65 @@ class MediaStoreSource @Inject constructor(
             null
         }
     }
+
+    override fun folders(): List<MediaFolder> {
+        val accumulator = FolderAccumulator()
+        for (collection in mediaCollections()) {
+            val cursor = context.contentResolver.query(
+                collection,
+                MediaColumns.BUCKET_PROJECTION,
+                null,
+                null,
+                null,
+            ) ?: continue
+            cursor.use(accumulator::consume)
+        }
+        return accumulator.toFolders()
+    }
+
+    /** Folds bucket rows from several collections into one folder list. */
+    private class FolderAccumulator {
+        private val counts = mutableMapOf<String, Int>()
+        private val names = mutableMapOf<String, String>()
+        private val newest = mutableMapOf<String, Long>()
+
+        fun consume(cursor: android.database.Cursor) {
+            val idColumn = cursor.getColumnIndexOrThrow(MediaColumns.BUCKET_ID)
+            val nameColumn = cursor.getColumnIndexOrThrow(MediaColumns.BUCKET_NAME)
+            val addedColumn = cursor.getColumnIndexOrThrow(MediaColumns.DATE_ADDED)
+            while (cursor.moveToNext()) {
+                if (!cursor.isNull(idColumn)) {
+                    add(
+                        bucketId = cursor.getString(idColumn),
+                        name = cursor.getString(nameColumn),
+                        dateAdded = cursor.getLong(addedColumn),
+                    )
+                }
+            }
+        }
+
+        private fun add(bucketId: String, name: String?, dateAdded: Long) {
+            counts[bucketId] = (counts[bucketId] ?: 0) + 1
+            names.putIfAbsent(bucketId, name ?: bucketId)
+            newest[bucketId] = maxOf(newest[bucketId] ?: 0, dateAdded)
+        }
+
+        fun toFolders(): List<MediaFolder> {
+            return counts.map { (bucketId, count) ->
+                MediaFolder(
+                    bucketId = bucketId,
+                    displayName = names[bucketId] ?: bucketId,
+                    itemCount = count,
+                    newestDateAddedEpochSeconds = newest[bucketId] ?: 0,
+                )
+            }.sortedByDescending { it.newestDateAddedEpochSeconds }
+        }
+    }
+
+    private fun mediaCollections() = listOf(
+        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+        MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+    )
 
     private fun query(collection: Uri, addedSinceEpochSeconds: Long): List<MediaItem> {
         val cursor = context.contentResolver.query(

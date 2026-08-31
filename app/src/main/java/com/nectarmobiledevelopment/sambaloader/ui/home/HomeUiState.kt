@@ -1,14 +1,25 @@
 package com.nectarmobiledevelopment.sambaloader.ui.home
 
-/**
- * Immutable snapshot of everything the home screen renders.
- *
- * Enrollment and sync status are placeholders until M2/M4 wire the real
- * repositories in; the shape is stable so the screen composable does not
- * change when they do.
- */
+/** Everything the home screen renders. */
 data class HomeUiState(
     val appVersion: String,
     val isEnrolled: Boolean,
-    val statusMessage: String,
-)
+    val serverHost: String?,
+    /** Waiting to be uploaded (discovered + hashed + retrying). */
+    val pendingCount: Int,
+    val uploadedCount: Int,
+    val failedCount: Int,
+    val deletedCount: Int,
+    val isSyncing: Boolean,
+    val backedUpFolderSummary: String,
+    val isWifiOnly: Boolean,
+) {
+    val statusMessage: String
+        get() = when {
+            !isEnrolled -> "Not paired with a server yet"
+            isSyncing -> "Backing up…"
+            pendingCount > 0 -> "$pendingCount item(s) waiting"
+            uploadedCount > 0 -> "Everything backed up"
+            else -> "Nothing to back up yet"
+        }
+}

@@ -1,11 +1,24 @@
 package com.nectarmobiledevelopment.sambaloader.core.data.settings
 
-/** Sync behavior settings (D7). */
+/** User-controlled sync behavior. */
 data class SyncSettings(
-    val isLocalDeletionEnabled: Boolean,
+    /**
+     * MediaStore bucket ids to back up. Empty means "not chosen yet" —
+     * the app then syncs only camera folders (see [isFolderSelectionSet]),
+     * never the whole device, so screenshots and chat media are not
+     * silently shipped to the NAS.
+     */
+    val selectedFolderIds: Set<String> = emptySet(),
+    /** Upload only on unmetered networks. Defaults ON: cellular data is expensive. */
+    val isWifiOnly: Boolean = true,
+    val isLocalDeletionEnabled: Boolean = false,
     /** Days after server confirmation before the local copy is deleted. */
-    val retentionDays: Int,
+    val retentionDays: Int = DEFAULT_RETENTION_DAYS,
 ) {
+
+    val isFolderSelectionSet: Boolean
+        get() = selectedFolderIds.isNotEmpty()
+
     companion object {
         const val DEFAULT_RETENTION_DAYS = 7
 

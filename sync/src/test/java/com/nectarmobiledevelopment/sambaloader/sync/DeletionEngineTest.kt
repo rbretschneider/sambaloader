@@ -56,7 +56,7 @@ class DeletionEngineTest {
         settings = SyncSettingsRepository(FakeSecureKeyValueStore())
         settings.setLocalDeletion(enabled = true, retentionDays = 7)
         val clock = TimeProvider { nowMillis }
-        scanner = AssetScanner(media, assets, ScanCursorRepository(db.scanCursorDao()))
+        scanner = AssetScanner(media, assets, ScanCursorRepository(db.scanCursorDao()), settings)
         hasher = AssetHasher(media, assets, clock)
         uploadEngine = UploadEngine(assets, media, { if (enrolled) transport else null }, clock)
         engine = DeletionEngine(

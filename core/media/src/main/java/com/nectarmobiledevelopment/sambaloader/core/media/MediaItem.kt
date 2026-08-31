@@ -15,4 +15,6 @@ data class MediaItem(
     /** MediaStore insertion time — the discovery watermark field. */
     val dateAddedEpochSeconds: Long,
     val contentUri: String,
+    /** Folder (MediaStore BUCKET_ID) this item lives in; "" if unknown. */
+    val bucketId: String = "",
 )
