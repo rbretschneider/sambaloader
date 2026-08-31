@@ -11,6 +11,25 @@ uploadd      plain HTTP on the compose-internal bridge, no published ports
 /library     your NAS mount; files land there for Samba to share
 ```
 
+## Deploying from the registry
+
+CI publishes the container on every push touching `server/`:
+`ghcr.io/rbretschneider/sambaloader/uploadd:latest` (plus `sha-<commit>`
+tags for pinning). To deploy the prebuilt image instead of building
+locally, override the service:
+
+```yaml
+# docker-compose.override.yml on the deploy host
+services:
+  uploadd:
+    image: ghcr.io/rbretschneider/sambaloader/uploadd:latest
+    build: !reset null
+```
+
+The package is private by default — authenticate the deploy host once:
+`docker login ghcr.io -u rbretschneider` with a token that has
+`read:packages`.
+
 ## First-time setup
 
 ```bash

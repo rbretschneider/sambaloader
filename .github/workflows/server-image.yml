@@ -1,0 +1,52 @@
+name: Server image
+
+# Builds and publishes the uploadd container to GHCR. The deployment
+# pulls ghcr.io/rbretschneider/sambaloader/uploadd instead of building
+# locally (see server/README.md "Deploying from the registry").
+on:
+  push:
+    branches: [master]
+    paths:
+      - "server/**"
+      - ".github/workflows/server-image.yml"
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build binary and run vet (fail fast before any image work)
+        working-directory: server/uploadd
+        run: |
+          go vet ./...
+          CGO_ENABLED=0 go build ./...
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}/uploadd
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+            type=ref,event=tag
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: server/uploadd
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
