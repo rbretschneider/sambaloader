@@ -19,6 +19,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nectarmobiledevelopment.sambaloader.BuildConfig
 import com.nectarmobiledevelopment.sambaloader.ui.debug.DebugIdentitySection
+import com.nectarmobiledevelopment.sambaloader.ui.debug.DebugSyncSection
 
 @Composable
 fun HomeScreen(
@@ -55,6 +56,8 @@ fun HomeScreen(
             }
             if (BuildConfig.DEBUG) {
                 Spacer(modifier = Modifier.height(32.dp))
+                DebugSyncSection()
+                Spacer(modifier = Modifier.height(16.dp))
                 DebugIdentitySection()
             }
         }
