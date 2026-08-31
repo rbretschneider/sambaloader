@@ -43,3 +43,4 @@ server/ca/.crldb/
 server/state/
 server/library/
 server/.env
+*.bak
