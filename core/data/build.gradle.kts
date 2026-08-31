@@ -41,5 +41,18 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.androidx.security.crypto)
 
+    api(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.junit4)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testRuntimeOnly(libs.junit.vintage.engine)
+}
+
+ksp {
+    // Exported schemas feed the migration tests required from version 2 on.
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
