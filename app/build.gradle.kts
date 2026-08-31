@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,20 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     alias(libs.plugins.android.junit5)
+}
+
+// Release signing: CI provides env vars, local builds read key.properties
+// (gitignored); with neither, release falls back to debug signing so a
+// fresh clone still builds.
+val keyProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) {
+        file.inputStream().use { stream -> load(stream) }
+    }
+}
+
+fun signingValue(env: String, property: String): String? {
+    return System.getenv(env) ?: keyProperties.getProperty(property)
 }
 
 android {
@@ -19,13 +35,30 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        create("release") {
+            val storePath = signingValue("KEYSTORE_FILE", "storeFile")
+            if (storePath != null) {
+                storeFile = rootProject.file(storePath)
+                storePassword = signingValue("KEYSTORE_PASSWORD", "storePassword")
+                keyAlias = signingValue("KEY_ALIAS", "keyAlias")
+                keyPassword = System.getenv("KEY_PASSWORD")
+                    ?: signingValue("KEYSTORE_PASSWORD", "keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
-            )
+            // Minification stays off until S7.4 verifies R8 keep rules for
+            // BouncyCastle/OkHttp/keystore reflection — a broken-at-runtime
+            // "optimized" build is worse than a slightly larger working one.
+            isMinifyEnabled = false
+            signingConfig = if (signingValue("KEYSTORE_FILE", "storeFile") != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
