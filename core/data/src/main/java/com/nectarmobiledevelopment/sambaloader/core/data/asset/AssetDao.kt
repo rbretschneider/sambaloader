@@ -31,58 +31,66 @@ interface AssetDao {
     suspend fun inState(state: AssetState, limit: Int): List<AssetEntity>
 
     /**
-     * Assets in [state] old enough to upload under the configured grace
-     * period. Oldest capture first, so a backfill drains in order.
+     * Assets in [state] that may be uploaded right now.
+     *
+     * Two rules narrow the set, and shared assets are exempt from both in
+     * different ways. The grace period only applies to the camera roll —
+     * an item the user deliberately shared has already been chosen, so
+     * there is nothing to reconsider. The metered size cap applies to
+     * both, but with its own limit per source, so "Wi-Fi only" can hold
+     * back a whole camera roll while still letting a shared photo through.
+     *
+     * Pass [Long.MAX_VALUE] for a limit that should not bite. Shared items
+     * sort first ('SHARED' > 'MEDIA_STORE' descending) so an explicit
+     * share is not stuck behind a backfill of ten thousand photos.
      */
     @Query(
         "SELECT * FROM assets WHERE state = :state " +
-            "AND capturedAtEpochSeconds <= :capturedAtOrBeforeEpochSeconds " +
-            "ORDER BY capturedAtEpochSeconds ASC LIMIT :limit",
+            "AND (source = 'SHARED' OR capturedAtEpochSeconds <= :capturedAtOrBeforeEpochSeconds) " +
+            "AND sizeBytes < (CASE source WHEN 'SHARED' THEN :sharedMaxBytes ELSE :maxSizeBytes END) " +
+            "ORDER BY source DESC, capturedAtEpochSeconds ASC LIMIT :limit",
     )
-    suspend fun inStateCapturedBefore(
-        state: AssetState,
-        capturedAtOrBeforeEpochSeconds: Long,
-        limit: Int,
-    ): List<AssetEntity>
-
-    /**
-     * As [inStateCapturedBefore], but only files small enough to send
-     * over a metered connection.
-     */
-    @Query(
-        "SELECT * FROM assets WHERE state = :state " +
-            "AND capturedAtEpochSeconds <= :capturedAtOrBeforeEpochSeconds " +
-            "AND sizeBytes < :maxSizeBytes " +
-            "ORDER BY capturedAtEpochSeconds ASC LIMIT :limit",
-    )
-    suspend fun inStateCapturedBeforeUnderSize(
+    suspend fun uploadable(
         state: AssetState,
         capturedAtOrBeforeEpochSeconds: Long,
         maxSizeBytes: Long,
+        sharedMaxBytes: Long,
         limit: Int,
     ): List<AssetEntity>
 
-    /** How many eligible assets are too large for the current connection. */
+    /** How many otherwise-eligible assets are too large for this connection. */
     @Query(
         "SELECT COUNT(*) FROM assets WHERE state = :state " +
-            "AND capturedAtEpochSeconds <= :capturedAtOrBeforeEpochSeconds " +
-            "AND sizeBytes >= :maxSizeBytes",
+            "AND (source = 'SHARED' OR capturedAtEpochSeconds <= :capturedAtOrBeforeEpochSeconds) " +
+            "AND sizeBytes >= (CASE source WHEN 'SHARED' THEN :sharedMaxBytes ELSE :maxSizeBytes END)",
     )
     suspend fun countOversizeForMetered(
         state: AssetState,
         capturedAtOrBeforeEpochSeconds: Long,
         maxSizeBytes: Long,
+        sharedMaxBytes: Long,
     ): Int
 
-    /** Capture time of the next asset still inside its grace period. */
+    /**
+     * Capture time of the next asset still inside its grace period. Shared
+     * assets never wait on it, so they are not counted.
+     */
     @Query(
         "SELECT MIN(capturedAtEpochSeconds) FROM assets WHERE state = :state " +
+            "AND source = 'MEDIA_STORE' " +
             "AND capturedAtEpochSeconds > :capturedAtOrBeforeEpochSeconds",
     )
     suspend fun earliestHeldCaptureTime(
         state: AssetState,
         capturedAtOrBeforeEpochSeconds: Long,
     ): Long?
+
+    /**
+     * Most negative synthetic id in use, or null when no shared asset
+     * exists yet. Shared assets count down from -1.
+     */
+    @Query("SELECT MIN(mediaStoreId) FROM assets WHERE mediaStoreId < 0")
+    suspend fun lowestSharedId(): Long?
 
     @Query("SELECT COUNT(*) FROM assets WHERE state = :state")
     suspend fun countInState(state: AssetState): Int

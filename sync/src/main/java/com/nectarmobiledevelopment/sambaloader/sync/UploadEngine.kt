@@ -2,6 +2,7 @@ package com.nectarmobiledevelopment.sambaloader.sync
 
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetEntity
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetRepository
+import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetSource
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetState
 import com.nectarmobiledevelopment.sambaloader.core.data.health.SyncHealthRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettings
@@ -11,6 +12,8 @@ import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
 import java.util.concurrent.TimeUnit
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaItem
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaSource
+import com.nectarmobiledevelopment.sambaloader.core.media.SharedInbox
+import java.io.InputStream
 import com.nectarmobiledevelopment.sambaloader.core.network.UploadStatusMapper
 import com.nectarmobiledevelopment.sambaloader.core.network.api.NetworkConditions
 import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportError
@@ -28,7 +31,9 @@ import kotlin.time.Duration.Companion.minutes
  * (process death) and promoting FAILED_RETRYABLE rows whose backoff has
  * elapsed.
  */
-@Suppress("LongParameterList") // collaborators, not a call-site API
+// One private step per stage of a pass; inlining them would make
+// uploadPending unreadable.
+@Suppress("LongParameterList", "TooManyFunctions")
 class UploadEngine @Inject constructor(
     private val assetRepository: AssetRepository,
     private val mediaSource: MediaSource,
@@ -37,6 +42,7 @@ class UploadEngine @Inject constructor(
     private val syncHealthRepository: SyncHealthRepository,
     private val settingsRepository: SyncSettingsRepository,
     private val networkConditions: NetworkConditions,
+    private val sharedInbox: SharedInbox,
 ) {
 
     private val backoffPolicy = BackoffPolicy()
@@ -122,15 +128,26 @@ class UploadEngine @Inject constructor(
         settings: SyncSettings,
         eligibleCapturedBefore: Long,
     ): PendingBatch {
-        val meteredLimit = meteredSizeLimit(settings)
-            ?: return PendingBatch(assetRepository.uploadableNow(eligibleCapturedBefore, BATCH_LIMIT), 0)
+        if (!networkConditions.isMetered()) {
+            return PendingBatch(
+                assets = assetRepository.uploadableNow(eligibleCapturedBefore, limit = BATCH_LIMIT),
+                waitingForWifi = 0,
+            )
+        }
+        val limit = meteredSizeLimit(settings)
+        val sharedLimit = sharedMeteredSizeLimit(settings)
         return PendingBatch(
-            assets = assetRepository.uploadableNowUnderSize(
+            assets = assetRepository.uploadableNow(
                 eligibleCapturedBefore,
-                meteredLimit,
-                BATCH_LIMIT,
+                maxSizeBytes = limit,
+                sharedMaxBytes = sharedLimit,
+                limit = BATCH_LIMIT,
             ),
-            waitingForWifi = assetRepository.countWaitingForWifi(eligibleCapturedBefore, meteredLimit),
+            waitingForWifi = assetRepository.countWaitingForWifi(
+                eligibleCapturedBefore,
+                maxSizeBytes = limit,
+                sharedMaxBytes = sharedLimit,
+            ),
         )
     }
 
@@ -140,20 +157,31 @@ class UploadEngine @Inject constructor(
     )
 
     /**
-     * Byte cap for this pass, or null when there is none: either the
-     * connection is unmetered, or the user allows cellular for everything.
-     * ALWAYS is handled by the WorkManager constraint, but is enforced
-     * here too so a manual run cannot spend cellular data unasked.
+     * Byte cap for camera-roll assets on a metered connection. ALWAYS is
+     * handled by the WorkManager constraint, but is enforced here too so a
+     * manual run cannot spend cellular data unasked.
      */
-    private fun meteredSizeLimit(settings: SyncSettings): Long? {
-        if (!networkConditions.isMetered()) {
-            return null
-        }
+    private fun meteredSizeLimit(settings: SyncSettings): Long {
         return when (settings.wifiRequirement) {
-            WifiRequirement.NEVER -> null
+            WifiRequirement.NEVER -> AssetRepository.NO_SIZE_CAP
             WifiRequirement.FOR_LARGE_FILES -> settings.largeFileThresholdBytes
             // Nothing may go over cellular: a zero cap matches no file.
             WifiRequirement.ALWAYS -> 0
+        }
+    }
+
+    /**
+     * Byte cap for shared assets on a metered connection. Sharing is a
+     * deliberate act on one file the user picked, so a blanket "Wi-Fi
+     * only" does not hold it — but the size cap still does, or sharing a
+     * long video on cellular would quietly spend a month of data.
+     */
+    private fun sharedMeteredSizeLimit(settings: SyncSettings): Long {
+        return when (settings.wifiRequirement) {
+            WifiRequirement.NEVER -> AssetRepository.NO_SIZE_CAP
+            WifiRequirement.FOR_LARGE_FILES,
+            WifiRequirement.ALWAYS,
+            -> settings.largeFileThresholdBytes
         }
     }
 
@@ -205,6 +233,7 @@ class UploadEngine @Inject constructor(
                     asset.mediaStoreId,
                     nowEpochMillis = timeProvider.nowEpochMillis(),
                 )
+                releaseSharedCopy(asset)
             }
         }
         return have
@@ -222,6 +251,7 @@ class UploadEngine @Inject constructor(
                     asset.mediaStoreId,
                     nowEpochMillis = timeProvider.nowEpochMillis(),
                 )
+                releaseSharedCopy(asset)
                 UploadDisposition.UPLOADED
             }
             is TransportResult.Failure -> handleFailure(asset, result.error)
@@ -255,23 +285,44 @@ class UploadEngine @Inject constructor(
     }
 
     private fun AssetEntity.toPayload(): UploadPayload {
-        val item = MediaItem(
-            mediaStoreId = mediaStoreId,
-            displayName = displayName,
-            mimeType = mimeType,
-            sizeBytes = sizeBytes,
-            capturedAtEpochSeconds = capturedAtEpochSeconds,
-            dateAddedEpochSeconds = capturedAtEpochSeconds,
-            contentUri = contentUri,
-        )
         return UploadPayload(
             sha256 = checkNotNull(sha256) { "HASHED asset without a hash: $mediaStoreId" },
             sizeBytes = sizeBytes,
             capturedAtEpochSeconds = capturedAtEpochSeconds,
             displayName = displayName,
             mimeType = mimeType,
-            openContent = { mediaSource.openContent(item) },
+            openContent = { openBytes() },
         )
+    }
+
+    /** Camera-roll assets read through MediaStore; shared ones from the inbox. */
+    private fun AssetEntity.openBytes(): InputStream? {
+        if (source == AssetSource.SHARED) {
+            return sharedInbox.open(contentUri)
+        }
+        return mediaSource.openContent(
+            MediaItem(
+                mediaStoreId = mediaStoreId,
+                displayName = displayName,
+                mimeType = mimeType,
+                sizeBytes = sizeBytes,
+                capturedAtEpochSeconds = capturedAtEpochSeconds,
+                dateAddedEpochSeconds = capturedAtEpochSeconds,
+                contentUri = contentUri,
+            ),
+        )
+    }
+
+    /**
+     * The app's private copy of a shared file exists only to survive until
+     * upload, so it goes as soon as the server confirms the content. It is
+     * deliberately kept after a failure: for a shared asset this copy is
+     * the only one left, and losing it would lose the file.
+     */
+    private fun releaseSharedCopy(asset: AssetEntity) {
+        if (asset.source == AssetSource.SHARED) {
+            sharedInbox.delete(asset.contentUri)
+        }
     }
 
     private enum class UploadDisposition { UPLOADED, RETRYABLE, PERMANENT, VANISHED, OFFLINE }

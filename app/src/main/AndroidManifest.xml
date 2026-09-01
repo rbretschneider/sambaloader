@@ -41,6 +41,32 @@
             </intent-filter>
         </activity>
 
+        <!-- Share-sheet target. Android does not let one app add entries to
+             another app's own long-press menu, so "Share -> Sambaloader" is
+             the route in for pictures from mail, chat and the browser.
+             excludeFromRecents + a dialog theme keep it feeling like a
+             sheet rather than a second copy of the app. -->
+        <activity
+            android:name=".ui.share.ShareReceiverActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:label="@string/share_target_label"
+            android:theme="@style/Theme.Sambaloader.Share">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"

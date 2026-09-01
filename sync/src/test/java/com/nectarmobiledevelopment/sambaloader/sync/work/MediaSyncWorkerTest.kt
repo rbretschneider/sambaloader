@@ -73,6 +73,7 @@ class MediaSyncWorkerTest {
                     syncHealthRepository = SyncHealthRepository(FakeSecureKeyValueStore(), clock),
                     settingsRepository = settings,
                     networkConditions = { false },
+                    sharedInbox = com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeSharedInbox(),
                 )
                 val runner = com.nectarmobiledevelopment.sambaloader.sync.SyncRunner(hasher, uploadEngine, clock)
                 val notifications = SyncNotifications(appContext)

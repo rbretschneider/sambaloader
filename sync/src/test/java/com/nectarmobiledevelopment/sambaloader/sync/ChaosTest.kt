@@ -15,6 +15,7 @@ import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportError
 import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportResult
 import com.nectarmobiledevelopment.sambaloader.core.testing.data.FakeSecureKeyValueStore
 import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeMediaSource
+import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeSharedInbox
 import com.nectarmobiledevelopment.sambaloader.core.testing.transport.FakeTransport
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
@@ -63,7 +64,7 @@ class ChaosTest {
         health = SyncHealthRepository(store, clock)
         scanner = AssetScanner(media, assets, ScanCursorRepository(db.scanCursorDao()), settings)
         hasher = AssetHasher(media, assets, clock)
-        engine = UploadEngine(assets, media, { transport }, clock, health, settings) { false }
+        engine = UploadEngine(assets, media, { transport }, clock, health, settings, { false }, FakeSharedInbox())
         runner = SyncRunner(hasher, engine, clock)
     }
 

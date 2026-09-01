@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Sambaloader</string>
+    <!-- Shown as the entry in the system share sheet. -->
+    <string name="share_target_label">Back up to server</string>
 </resources>

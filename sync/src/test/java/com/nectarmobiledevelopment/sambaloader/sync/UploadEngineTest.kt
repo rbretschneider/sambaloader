@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetState
+import com.nectarmobiledevelopment.sambaloader.core.data.asset.SharedAssetDraft
 import com.nectarmobiledevelopment.sambaloader.core.data.db.SambaloaderDatabase
 import com.nectarmobiledevelopment.sambaloader.core.data.health.SyncHealthRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.scan.ScanCursorRepository
@@ -15,6 +16,7 @@ import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportError
 import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportResult
 import com.nectarmobiledevelopment.sambaloader.core.testing.data.FakeSecureKeyValueStore
 import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeMediaSource
+import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeSharedInbox
 import com.nectarmobiledevelopment.sambaloader.core.testing.transport.FakeTransport
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -33,6 +35,7 @@ class UploadEngineTest {
     private lateinit var db: SambaloaderDatabase
     private lateinit var assets: AssetRepository
     private val media = FakeMediaSource()
+    private val inbox = FakeSharedInbox()
     private val transport = FakeTransport()
     private var enrolled = true
     private var isMetered = false
@@ -60,6 +63,7 @@ class UploadEngineTest {
             syncHealthRepository = SyncHealthRepository(FakeSecureKeyValueStore(), clock),
             settingsRepository = settings,
             networkConditions = { isMetered },
+            sharedInbox = inbox,
         )
     }
 
@@ -337,6 +341,106 @@ class UploadEngineTest {
         seedSized(2, sizeBytes = 3 * 1024 * 1024)
 
         assertEquals(1, engine.uploadPending().uploaded)
+    }
+
+    /** Queues a file as if it had arrived through the share sheet. */
+    private suspend fun seedShared(name: String, sizeBytes: Int = 1024): Long {
+        val bytes = ByteArray(sizeBytes) { name[0].code.toByte() }
+        val uri = inbox.store(bytes.inputStream(), name)
+        return assets.addShared(
+            SharedAssetDraft(
+                sha256 = "%064x".format(name.hashCode().toBigInteger().abs()),
+                sizeBytes = sizeBytes.toLong(),
+                capturedAtEpochSeconds = nowMillis / 1000,
+                displayName = name,
+                mimeType = "image/jpeg",
+                contentUri = uri,
+            ),
+        )
+    }
+
+    @Test
+    fun `a shared photo uploads without waiting out the grace period`() = runTest {
+        settings.setUploadDelayMinutes(90)
+        val id = seedShared("from-email.jpg")
+
+        val summary = engine.uploadPending()
+
+        // A camera photo would be held for 90 minutes; a file the user
+        // deliberately shared has already been chosen.
+        assertEquals(1, summary.uploaded)
+        assertEquals(AssetState.UPLOADED, assets.byId(id)!!.state)
+    }
+
+    @Test
+    fun `a shared photo crosses mobile data even when Wi-Fi is required`() = runTest {
+        settings.setWifiRequirement(WifiRequirement.ALWAYS)
+        isMetered = true
+        val id = seedShared("from-chat.jpg", sizeBytes = 512 * 1024)
+
+        assertEquals(1, engine.uploadPending().uploaded)
+        assertEquals(AssetState.UPLOADED, assets.byId(id)!!.state)
+    }
+
+    @Test
+    fun `a large shared video still waits for Wi-Fi`() = runTest {
+        settings.setWifiRequirement(WifiRequirement.ALWAYS)
+        settings.setLargeFileThresholdMb(2)
+        isMetered = true
+        val id = seedShared("holiday.mp4", sizeBytes = 3 * 1024 * 1024)
+
+        val summary = engine.uploadPending()
+
+        assertEquals(0, summary.uploaded)
+        assertEquals(1, summary.waitingForWifi)
+        assertEquals(AssetState.HASHED, assets.byId(id)!!.state)
+    }
+
+    @Test
+    fun `the private copy of a shared file is released once the server has it`() = runTest {
+        val id = seedShared("receipt.jpg")
+        val copyUri = assets.byId(id)!!.contentUri
+        assertTrue(inbox.storedUris.contains(copyUri))
+
+        engine.uploadPending()
+
+        assertFalse("the copy exists only until upload", inbox.storedUris.contains(copyUri))
+    }
+
+    @Test
+    fun `a failed shared upload keeps its copy - it is the only one left`() = runTest {
+        val id = seedShared("only-copy.jpg")
+        val copyUri = assets.byId(id)!!.contentUri
+        transport.nextUploadResult = { TransportResult.Failure(TransportError.HttpError(507)) }
+
+        engine.uploadPending()
+
+        assertEquals(AssetState.FAILED_RETRYABLE, assets.byId(id)!!.state)
+        assertTrue("deleting it would lose the file", inbox.storedUris.contains(copyUri))
+    }
+
+    @Test
+    fun `a shared file the server already holds is skipped and its copy released`() = runTest {
+        val id = seedShared("duplicate.jpg")
+        val asset = assets.byId(id)!!
+        transport.remoteHashes += asset.sha256!!
+
+        val summary = engine.uploadPending()
+
+        assertEquals(1, summary.skippedRemoteHas)
+        assertEquals(AssetState.SKIPPED_REMOTE_HAS, assets.byId(id)!!.state)
+        assertFalse(inbox.storedUris.contains(asset.contentUri))
+    }
+
+    @Test
+    fun `shared items are uploaded ahead of a camera-roll backfill`() = runTest {
+        seedHashed(1, 2, 3)
+        val sharedId = seedShared("urgent.jpg")
+
+        engine.uploadPending()
+
+        // The share was queued last but must not sit behind a backlog.
+        assertEquals(assets.byId(sharedId)!!.sha256, transport.uploadedHashes.first())
     }
 
     @Test

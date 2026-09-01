@@ -30,6 +30,37 @@ class AssetRepository @Inject constructor(
         return dao.byId(mediaStoreId)
     }
 
+    /**
+     * Records a file handed in through the share sheet. It arrives already
+     * copied and hashed — the bytes had to be read while the share grant
+     * was still alive — so it enters at [AssetState.HASHED] rather than
+     * being discovered and hashed later.
+     *
+     * Returns the synthetic negative id assigned to it.
+     */
+    suspend fun addShared(draft: SharedAssetDraft): Long {
+        val id = (dao.lowestSharedId() ?: 0L) - 1L
+        dao.insertIgnoring(
+            listOf(
+                AssetEntity(
+                    mediaStoreId = id,
+                    sha256 = draft.sha256,
+                    sizeBytes = draft.sizeBytes,
+                    capturedAtEpochSeconds = draft.capturedAtEpochSeconds,
+                    displayName = draft.displayName,
+                    mimeType = draft.mimeType,
+                    contentUri = draft.contentUri,
+                    state = AssetState.HASHED,
+                    attemptCount = 0,
+                    lastAttemptAtEpochMillis = null,
+                    lastError = null,
+                    source = AssetSource.SHARED,
+                ),
+            ),
+        )
+        return id
+    }
+
     suspend fun inState(state: AssetState, limit: Int = DEFAULT_BATCH_LIMIT): List<AssetEntity> {
         return dao.inState(state, limit)
     }
@@ -38,28 +69,21 @@ class AssetRepository @Inject constructor(
         return dao.countInState(state)
     }
 
-    /** Hashed assets past their upload grace period, oldest capture first. */
+    /**
+     * Hashed assets ready to upload under the current grace period and
+     * size caps. [maxSizeBytes] and [sharedMaxBytes] default to no cap.
+     */
     suspend fun uploadableNow(
         capturedAtOrBeforeEpochSeconds: Long,
+        maxSizeBytes: Long = NO_SIZE_CAP,
+        sharedMaxBytes: Long = NO_SIZE_CAP,
         limit: Int = DEFAULT_BATCH_LIMIT,
     ): List<AssetEntity> {
-        return dao.inStateCapturedBefore(
-            AssetState.HASHED,
-            capturedAtOrBeforeEpochSeconds,
-            limit,
-        )
-    }
-
-    /** Uploadable assets small enough for a metered connection. */
-    suspend fun uploadableNowUnderSize(
-        capturedAtOrBeforeEpochSeconds: Long,
-        maxSizeBytes: Long,
-        limit: Int = DEFAULT_BATCH_LIMIT,
-    ): List<AssetEntity> {
-        return dao.inStateCapturedBeforeUnderSize(
+        return dao.uploadable(
             AssetState.HASHED,
             capturedAtOrBeforeEpochSeconds,
             maxSizeBytes,
+            sharedMaxBytes,
             limit,
         )
     }
@@ -68,11 +92,13 @@ class AssetRepository @Inject constructor(
     suspend fun countWaitingForWifi(
         capturedAtOrBeforeEpochSeconds: Long,
         maxSizeBytes: Long,
+        sharedMaxBytes: Long = NO_SIZE_CAP,
     ): Int {
         return dao.countOversizeForMetered(
             AssetState.HASHED,
             capturedAtOrBeforeEpochSeconds,
             maxSizeBytes,
+            sharedMaxBytes,
         )
     }
 
@@ -202,7 +228,10 @@ class AssetRepository @Inject constructor(
         dao.update(mutate(current).copy(state = to))
     }
 
-    private companion object {
-        const val DEFAULT_BATCH_LIMIT = 100
+    companion object {
+        private const val DEFAULT_BATCH_LIMIT = 100
+
+        /** A cap no real file can reach, i.e. "no limit". */
+        const val NO_SIZE_CAP = Long.MAX_VALUE
     }
 }

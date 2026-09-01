@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Sambaloader" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- The share target is a transient progress sheet over whatever app
+         the user was in, not a screen of its own. -->
+    <style name="Theme.Sambaloader.Share" parent="android:Theme.Material.Light.Dialog.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowCloseOnTouchOutside">false</item>
+    </style>
 </resources>

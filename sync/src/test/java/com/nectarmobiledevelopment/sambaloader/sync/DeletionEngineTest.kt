@@ -15,6 +15,7 @@ import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportResult
 import com.nectarmobiledevelopment.sambaloader.core.testing.data.FakeSecureKeyValueStore
 import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeMediaDeleter
 import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeMediaSource
+import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeSharedInbox
 import com.nectarmobiledevelopment.sambaloader.core.testing.transport.FakeTransport
 import kotlin.time.Duration.Companion.days
 import kotlinx.coroutines.test.runTest
@@ -61,7 +62,7 @@ class DeletionEngineTest {
         hasher = AssetHasher(media, assets, clock)
         uploadEngine = UploadEngine(
             assets, media, { if (enrolled) transport else null }, clock,
-            SyncHealthRepository(FakeSecureKeyValueStore(), clock), settings, { false },
+            SyncHealthRepository(FakeSecureKeyValueStore(), clock), settings, { false }, FakeSharedInbox(),
         )
         engine = DeletionEngine(
             assetRepository = assets,
