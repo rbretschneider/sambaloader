@@ -44,3 +44,12 @@ server/state/
 server/library/
 server/.env
 *.bak
+
+# Dev-server runtime output — files uploaded during local testing land
+# here. They are someone's real camera roll, never repo content.
+tools/dev-enroll-server/library/
+tools/dev-enroll-server/state/
+tools/dev-enroll-server/ca/
+
+# Editor backup files
+*~

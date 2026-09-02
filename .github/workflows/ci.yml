@@ -86,6 +86,11 @@ jobs:
           version=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           out="sambaloader-v${version}-${GITHUB_SHA::7}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$out"
+          # A second copy under a fixed name, so
+          # /releases/latest/download/sambaloader.apk is a link that never
+          # goes stale. The versioned name above keeps provenance for
+          # anyone holding several builds.
+          cp app/build/outputs/apk/release/app-release.apk sambaloader.apk
           echo "file=$out" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
@@ -98,7 +103,10 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" "${{ steps.apk.outputs.file }}" --title "${GITHUB_REF_NAME}" --generate-notes
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "${{ steps.apk.outputs.file }}" sambaloader.apk \
+            --title "${GITHUB_REF_NAME}" --generate-notes
 
   # Testcontainers integration (M5) and instrumented emulator tests (M5/M7)
   # get their own pull-request jobs when those milestones land.
