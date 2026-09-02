@@ -119,13 +119,26 @@ func ensureServerCert(dir, hostname string, extraSANs []string) error {
 	certPath := filepath.Join(dir, "server.crt")
 	keyPath := filepath.Join(dir, "server.key")
 
-	if fileExists(certPath) && fileExists(keyPath) && certCovers(certPath, hostname, extraSANs) {
+	haveCert := fileExists(certPath) && fileExists(keyPath)
+	if haveCert && certCovers(certPath, hostname, extraSANs) {
 		return nil
 	}
 	caKey, caCert, err := loadCAKeyPair(dir)
 	if err != nil {
-		// No signing key (offline-key mode) and no usable server cert: the
-		// stack cannot serve TLS at all, so say exactly that.
+		// Offline-key mode. If a usable certificate is already on disk,
+		// keep serving with it rather than refusing to start: an operator
+		// who moved ca.key away and then changed a hostname should get a
+		// warning and a running server, not a crash loop.
+		if haveCert {
+			log.Printf(
+				"WARNING: server certificate does not cover %q and ca.key is absent, "+
+					"so it cannot be reissued. Serving the existing certificate. "+
+					"Restore ca.key and restart to fix.",
+				strings.Join(append([]string{hostname}, extraSANs...), ", "),
+			)
+			return nil
+		}
+		// Nothing usable at all: the stack genuinely cannot serve TLS.
 		return fmt.Errorf("cannot issue server certificate: %w", err)
 	}
 	log.Printf("issuing server certificate for %s", strings.Join(append([]string{hostname}, extraSANs...), ", "))
