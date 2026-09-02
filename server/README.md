@@ -1,7 +1,7 @@
 # Sambaloader server stack
 
 The container stack behind the Sambaloader Android app, implementing
-[docs/SERVER_SPEC.md](../docs/SERVER_SPEC.md) v1.1. This directory is
+[docs/SERVER_SPEC.md](../docs/SERVER_SPEC.md) v1.2. This directory is
 self-contained — copy it wholesale into its own repo.
 
 ```
@@ -33,21 +33,52 @@ The package is private by default — authenticate the deploy host once:
 ## First-time setup
 
 ```bash
-cp .env.example .env            # set PUID/PGID, LIBRARY_PATH, PUBLIC_URL
-./ca/bootstrap.sh nas.example.com 192.168.1.50   # hostname + LAN IP (SANs)
-docker compose up -d --build
+cp .env.example .env      # set PUBLIC_URL (and EXTRA_SANS to your LAN IP)
+docker compose up -d
 ```
 
-Then **move `ca.key` off the server** (bootstrap prints this loudly).
+That is the whole setup. On first start `uploadd` generates its own CA,
+server certificate and empty CRL into `ca/`, then leaves them alone
+forever after. There is no script to run, no `openssl` needed on the
+host, and **no file to copy anywhere** — the CA reaches the phone inside
+the pairing QR, which also carries its fingerprint so the app can refuse
+a substituted one.
+
 Forward **only** port 443 on the router. **Never 8443.**
 
-Enroll a phone: restore `ca.key` into `ca/`, open
-`https://<server-lan-ip>:8443` from a browser on the LAN, click
-*Enroll a device*, scan the QR with the app, compare the fingerprint,
-done. Remove `ca.key` again.
+### Pair a phone
 
-Revoke a lost phone: restore `ca.key`, then `./ca/revoke.sh <serial>`
-(serials are on the admin page). Remove `ca.key` again.
+```bash
+docker compose exec uploadd /uploadd -pair
+```
+
+Prints a QR straight into your terminal along with the CA fingerprint.
+Scan it in the app, check the fingerprint the app shows matches the one
+printed, confirm. The code is single-use and expires in 10 minutes.
+
+The admin page at `https://<server-lan-ip>:8443` does the same thing with
+a browser, if you prefer clicking.
+
+### Revoke a phone
+
+```bash
+docker compose exec uploadd /uploadd -revoke 0x4a2f...
+```
+
+Serials are listed on the admin page. nginx picks up the new CRL within
+seconds — no restart.
+
+### Where the CA key lives
+
+`ca/ca.key` stays on the server, because that is what makes enrolling a
+new phone a single command instead of a file-shuffling ritual. The
+tradeoff is real and worth stating plainly: anyone who can read that file
+can mint a device certificate for your library.
+
+If you would rather not accept it, the offline path still works — move
+`ca.key` somewhere safe after first start and copy it back for the few
+minutes it takes to enroll or revoke. `uploadd` starts fine without it
+and answers `503 ca_key_absent` on enrollment until it returns.
 
 ## Library mount (container host ≠ NAS)
 
@@ -110,6 +141,6 @@ once-per-device, ever; revocation is the only lifecycle event.
 # no client cert -> must die during the TLS handshake, not with an HTTP error
 curl -vk https://localhost/api/v1/health 2>&1 | grep -E "alert|error"
 
-# with a client cert (after enrolling one, or sign one with sign-csr.sh)
+# with a client cert (enroll a device first to obtain one)
 curl -sk --cert device.crt --key device.key https://localhost/api/v1/health
 ```

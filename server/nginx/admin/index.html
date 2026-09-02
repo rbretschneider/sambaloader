@@ -16,14 +16,16 @@
 <p class="warn">Never forward port 8443 on your router — anyone who can reach this page can enroll a device.</p>
 
 <h2>Enroll a device</h2>
-<p>Before enrolling: restore <code>ca.key</code> into the server's <code>ca/</code> directory.
-   Remove it again when you're done.</p>
+<p>Scan the QR in the Sambaloader app, then check the fingerprint the app shows
+   matches the one below before confirming. The code is single-use and expires
+   in 10 minutes.</p>
+<p>You can do the same from a terminal with
+   <code>docker compose exec uploadd /uploadd -pair</code>.</p>
 <button id="enroll">Enroll a device</button>
 <div id="out"></div>
 
 <h2>Devices</h2>
-<p>Revoking blocks a lost phone at its next connection. It needs
-   <code>ca.key</code> restored, same as enrolling. This cannot be undone —
+<p>Revoking blocks a lost phone at its next connection. This cannot be undone —
    the device must be enrolled again to come back.</p>
 <table id="devices"><tr><th>Label</th><th>CN</th><th>Serial</th><th>Last seen</th><th>Assets</th><th>Status</th><th></th></tr></table>
 <p id="revoke-status"></p>
@@ -57,7 +59,7 @@ async function revoke(serial, label) {
     loadDevices();
   } else if (body.error === 'ca_key_absent') {
     status.innerHTML = '<span class="warn">ca.key is not on the server.</span> ' +
-      'Restore it into the CA directory, then revoke again (and remove it afterwards).';
+      'Restore it into the CA directory, then revoke again.';
   } else {
     status.innerHTML = '<span class="warn">Revoke failed: ' + (body.error || response.status) + '</span>';
   }

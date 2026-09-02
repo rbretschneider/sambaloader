@@ -94,7 +94,11 @@ private fun ScanningStep(
             ScanOptions()
                 .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
                 .setPrompt("Scan the enrollment QR code")
-                .setBeepEnabled(false),
+                .setBeepEnabled(false)
+                // The scanner defaults to locking landscape, which forces
+                // the phone sideways to read a QR that scans perfectly
+                // well upright. Follow however the device is being held.
+                .setOrientationLocked(false),
         )
     }) {
         Text("Scan QR code")

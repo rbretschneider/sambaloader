@@ -30,12 +30,14 @@ services:
       - DB_PATH=/state/uploadd.db
       - CA_DIR=/ca
       - PUBLIC_URL=${PUBLIC_URL:-https://localhost}
+      # Extra server-certificate names, typically the LAN IP.
+      - EXTRA_SANS=${EXTRA_SANS:-}
     volumes:
       # The NAS mount on the host (NFS recommended; see README for the
       # SMB caveats). Files land owned by PUID:PGID above.
       - ${LIBRARY_PATH:-./library}:/library
       - ./state:/state
-      # rw: uploadd writes crl.pem on revocation. ca.key lives here ONLY
-      # during enrollment/revocation windows (mode (a), SERVER_SPEC §3.5).
+      # rw: uploadd provisions the CA here on first run and rewrites
+      # crl.pem on revocation (SERVER_SPEC §3).
       - ./ca:/ca
     restart: unless-stopped

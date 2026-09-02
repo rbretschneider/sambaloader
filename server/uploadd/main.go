@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 )
 
 type config struct {
@@ -22,6 +23,9 @@ type config struct {
 	dbPath      string
 	caDir       string
 	publicURL   string
+	// Additional SANs for the server certificate — typically the LAN IP,
+	// so the admin listener works before DNS does.
+	extraSANs []string
 }
 
 func configFromEnv() config {
@@ -31,7 +35,18 @@ func configFromEnv() config {
 		dbPath:      envOr("DB_PATH", "/state/uploadd.db"),
 		caDir:       envOr("CA_DIR", "/ca"),
 		publicURL:   envOr("PUBLIC_URL", "https://localhost"),
+		extraSANs:   splitList(os.Getenv("EXTRA_SANS")),
 	}
+}
+
+func splitList(value string) []string {
+	var out []string
+	for _, part := range strings.Split(value, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 func envOr(key, fallback string) string {
@@ -43,6 +58,7 @@ func envOr(key, fallback string) string {
 
 func main() {
 	revokeSerial := flag.String("revoke", "", "revoke a device certificate by serial (e.g. 0x4a2f...) and regenerate the CRL, then exit")
+	pair := flag.Bool("pair", false, "print a pairing QR code to the terminal and exit")
 	flag.Parse()
 
 	cfg := configFromEnv()
@@ -59,9 +75,23 @@ func main() {
 		return
 	}
 
+	// First run provisions its own CA, server certificate and empty CRL.
+	// `docker compose up` is the whole setup — there is no script to run
+	// and nothing for the operator to copy anywhere.
+	if err := ensureCA(cfg.caDir, hostnameFromURL(cfg.publicURL), cfg.extraSANs); err != nil {
+		log.Fatalf("CA provisioning: %v", err)
+	}
+
 	ca, err := loadCA(cfg.caDir)
 	if err != nil {
 		log.Fatalf("CA material: %v (is %s mounted?)", err, cfg.caDir)
+	}
+
+	if *pair {
+		if err := printPairingQR(db, ca, cfg); err != nil {
+			log.Fatalf("pair: %v", err)
+		}
+		return
 	}
 
 	store := newLocalFSStore(cfg.libraryPath)

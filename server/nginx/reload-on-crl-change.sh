@@ -11,6 +11,22 @@ set -eu
 CRL=/etc/nginx/ca/crl.pem
 STAMP=/tmp/crl.stamp
 INTERVAL="${CRL_POLL_SECONDS:-10}"
+SERVER_CERT=/etc/nginx/ca/server.crt
+
+# On a first run uploadd is still generating the CA when nginx starts.
+# depends_on only orders container start, not readiness, so without this
+# wait nginx exits immediately on a missing ssl_certificate and the whole
+# stack looks broken on the very first `docker compose up`.
+waited=0
+while [ ! -f "$SERVER_CERT" ] || [ ! -f "$CRL" ]; do
+    if [ "$waited" -ge 60 ]; then
+        echo "timed out waiting for uploadd to provision $SERVER_CERT" >&2
+        exit 1
+    fi
+    [ "$waited" -eq 0 ] && echo "waiting for uploadd to provision CA material..."
+    sleep 1
+    waited=$((waited + 1))
+done
 
 touch "$STAMP"
 

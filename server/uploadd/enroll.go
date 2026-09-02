@@ -76,20 +76,10 @@ func (ca *caMaterial) fingerprint() string {
 }
 
 func (s *apiServer) handleEnrollBegin(w http.ResponseWriter, _ *http.Request) {
-	buf := make([]byte, 9)
-	if _, err := rand.Read(buf); err != nil {
-		http.Error(w, "entropy failure", http.StatusInternalServerError)
-		return
-	}
-	raw := strings.ToUpper(base64.RawURLEncoding.EncodeToString(buf))
-	token := raw[:4] + "-" + raw[4:8] + "-" + raw[8:12]
-	now := time.Now()
-	expires := now.Add(tokenTTL)
-
-	if _, err := s.db.Exec(
-		"INSERT INTO pairing_tokens (token, created_at, expires_at) VALUES (?, ?, ?)",
-		token, now.Unix(), expires.Unix(),
-	); err != nil {
+	// Same minting path as `uploadd -pair`, so the web and terminal
+	// flows cannot drift apart.
+	token, expires, err := mintPairingToken(s.db)
+	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
