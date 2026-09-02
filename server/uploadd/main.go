@@ -26,6 +26,8 @@ type config struct {
 	// Additional SANs for the server certificate — typically the LAN IP,
 	// so the admin listener works before DNS does.
 	extraSANs []string
+	// Blank means "generate one and print it"; see resolveAdminPassword.
+	adminPassword string
 }
 
 func configFromEnv() config {
@@ -36,6 +38,8 @@ func configFromEnv() config {
 		caDir:       envOr("CA_DIR", "/ca"),
 		publicURL:   envOr("PUBLIC_URL", "https://localhost"),
 		extraSANs:   splitList(os.Getenv("EXTRA_SANS")),
+
+		adminPassword: strings.TrimSpace(os.Getenv("ADMIN_PASSWORD")),
 	}
 }
 
@@ -87,12 +91,21 @@ func main() {
 		log.Fatalf("CA material: %v (is %s mounted?)", err, cfg.caDir)
 	}
 
+	// `-pair` runs on the server itself, so it needs no password: being
+	// able to exec into the container is already more access than the
+	// admin page grants.
 	if *pair {
 		if err := printPairingQR(db, ca, cfg); err != nil {
 			log.Fatalf("pair: %v", err)
 		}
 		return
 	}
+
+	adminPassword, generated, err := resolveAdminPassword(db, cfg.adminPassword)
+	if err != nil {
+		log.Fatalf("admin password: %v", err)
+	}
+	announceAdminPassword(adminPassword, generated)
 
 	store := newLocalFSStore(cfg.libraryPath)
 	server := &apiServer{db: db, store: store, ca: ca, publicURL: cfg.publicURL}
@@ -105,12 +118,18 @@ func main() {
 	mux.HandleFunc("POST /api/v1/assets", requireDeviceCN(server.handleUpload))
 
 	// Enrollment/admin routes (nginx :8443 → here; NEVER exposed on :443
-	// because api.conf proxies only /api/).
-	mux.HandleFunc("POST /enroll/begin", server.handleEnrollBegin)
+	// because api.conf proxies only /api/). Password-gated: reaching this
+	// listener is not by itself permission to enroll a device.
+	admin := func(h http.HandlerFunc) http.HandlerFunc {
+		return requireAdminAuth(adminPassword, h)
+	}
+	mux.HandleFunc("POST /enroll/begin", admin(server.handleEnrollBegin))
+	mux.HandleFunc("GET /qr", admin(server.handleQR))
+	mux.HandleFunc("GET /admin/devices", admin(server.handleDeviceList))
+	mux.HandleFunc("POST /admin/devices/{serial}/revoke", admin(server.handleRevoke))
+	// Not password-gated: the app calls this, and it already carries a
+	// single-use token that /enroll/begin only hands out after auth.
 	mux.HandleFunc("POST /enroll/complete", server.handleEnrollComplete)
-	mux.HandleFunc("GET /qr", server.handleQR)
-	mux.HandleFunc("GET /admin/devices", server.handleDeviceList)
-	mux.HandleFunc("POST /admin/devices/{serial}/revoke", server.handleRevoke)
 
 	log.Printf("uploadd listening on %s (library=%s db=%s)", cfg.listen, cfg.libraryPath, cfg.dbPath)
 	log.Fatal(http.ListenAndServe(cfg.listen, mux))

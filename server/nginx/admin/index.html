@@ -34,6 +34,16 @@
 document.getElementById('enroll').onclick = async () => {
   const out = document.getElementById('out');
   const response = await fetch('/enroll/begin', { method: 'POST' });
+  if (response.status === 401) {
+    // Browsers do not reliably raise the Basic-auth prompt for fetch(),
+    // so say plainly what is needed instead of showing a bare 401.
+    out.innerHTML = '<p class="warn">Password required.</p>' +
+      '<p>Username <code>admin</code>. The password is in the server log ' +
+      '(<code>docker compose logs uploadd</code>), or whatever you set as ' +
+      '<code>ADMIN_PASSWORD</code>. Reload this page to be prompted, or use ' +
+      '<code>docker compose exec uploadd /uploadd -pair</code> instead.</p>';
+    return;
+  }
   if (!response.ok) { out.textContent = 'Failed: ' + response.status; return; }
   const payload = await response.json();
   const encoded = btoa(JSON.stringify(payload))

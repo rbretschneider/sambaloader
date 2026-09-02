@@ -30,6 +30,13 @@ CREATE TABLE IF NOT EXISTS pairing_tokens (
   used_at     INTEGER
 );
 
+-- Small key/value store for values that must survive restarts but have
+-- no table of their own — currently the generated admin password.
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS assets (
   sha256      TEXT PRIMARY KEY,
   path        TEXT NOT NULL,

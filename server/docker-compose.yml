@@ -32,6 +32,8 @@ services:
       - PUBLIC_URL=${PUBLIC_URL:-https://localhost}
       # Extra server-certificate names, typically the LAN IP.
       - EXTRA_SANS=${EXTRA_SANS:-}
+      # Blank => generated on first run and printed to the log.
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
     volumes:
       # The NAS mount on the host (NFS recommended; see README for the
       # SMB caveats). Files land owned by PUID:PGID above.

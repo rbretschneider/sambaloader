@@ -76,6 +76,12 @@ documented manual verification.
 6. `uploadd` has no `ports:` mapping — internal bridge only. The compose file
    carries a comment saying this is a security control.
 7. Pairing tokens are single-use with a TTL ≤ 10 minutes.
+7a. **Added in 1.2:** the enrollment/admin listener requires an admin
+   password (HTTP Basic), enforced in `uploadd` so it survives a
+   misconfigured proxy. Reaching port 8443 is not by itself permission to
+   enroll a device — otherwise the trust boundary is the entire LAN.
+   A blank `ADMIN_PASSWORD` generates a strong one rather than disabling
+   the check.
 8. All certificate validation failures fail closed. There is no unauthenticated
    fallback path anywhere.
 
@@ -425,6 +431,12 @@ close early; the client must treat connection-reset-after-200 as success.
 Called by the admin page (button click), not the app. `uploadd -pair` mints an
 identical payload and renders it as a QR in the terminal. Creates a pairing
 token (single use, **TTL 10 minutes**) and returns the QR payload:
+
+**Auth (added in 1.2):** HTTP Basic, user `admin`, password from
+`ADMIN_PASSWORD` or generated on first run. Applies to `/enroll/begin`, `/qr`
+and `/admin/*`. **Not** to `/enroll/complete` — the app calls that one, and it
+already carries a single-use token that `/enroll/begin` only issues after auth.
+`uploadd -pair` bypasses it: running it requires access to the server itself.
 
 **Token format (changed in 1.2):** `XXXX-XXXX-XXXX` over the alphabet
 `ABCDEFGHJKMNPQRSTVWXYZ23456789` — no `I`, `L`, `O`, `U`, `0`, `1`, and

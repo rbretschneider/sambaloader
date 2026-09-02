@@ -46,6 +46,25 @@ a substituted one.
 
 Forward **only** port 443 on the router. **Never 8443.**
 
+### The admin password
+
+Port 8443 hosts enrollment, and **anything that can reach it can add a
+device** — so it is password-protected. Reaching the port is not, by
+itself, permission.
+
+Leave `ADMIN_PASSWORD` blank in `.env` and one is generated on first run
+and printed every start:
+
+```
+admin listener: username "admin" password "7QK4-MNVX-3PBR"
+```
+
+Find it with `docker compose logs uploadd` (or the log view in Portainer).
+Set `ADMIN_PASSWORD` in `.env` if you would rather choose your own.
+
+This is a shared password, not user accounts — anyone holding it can
+enroll a device.
+
 ### Pair a phone
 
 ```bash
@@ -127,9 +146,9 @@ If you run the bundled compose file instead, all of this is already done.
 | `GET  /api/v1/health` | :443 | mTLS (nginx) + `X-Device-CN` |
 | `POST /api/v1/assets/check` | :443 | mTLS (nginx) + `X-Device-CN` |
 | `POST /api/v1/assets` | :443 | mTLS (nginx) + `X-Device-CN` |
-| `POST /enroll/begin` | :8443 | none — LAN-only listener |
+| `POST /enroll/begin` | :8443 | admin password (HTTP Basic) |
 | `POST /enroll/complete` | :8443 | single-use token (10 min TTL) |
-| `GET  /qr`, `GET /admin/devices` | :8443 | none — LAN-only listener |
+| `GET  /qr`, `GET /admin/devices` | :8443 | admin password (HTTP Basic) |
 
 State lives in `./state/uploadd.db` (SQLite, WAL). Device certs are
 signed for 25 years, CA 30, server 10 (decision D1) — enrollment is
