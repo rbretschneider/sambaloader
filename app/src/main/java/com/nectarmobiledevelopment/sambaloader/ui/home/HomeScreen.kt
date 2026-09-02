@@ -33,6 +33,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nectarmobiledevelopment.sambaloader.core.system.ReadinessItem
 import com.nectarmobiledevelopment.sambaloader.oem.OemAutostartSettings
 
 @Composable
@@ -81,24 +82,48 @@ fun HomeScreen(
                 Text(text = "Server: $host", style = MaterialTheme.typography.bodySmall)
             }
 
-            if (!uiState.isEnrolled) {
-                Button(onClick = onPairClick) {
-                    Text("Pair with server")
-                }
-            } else {
-                StatusCard(uiState)
-                ConfigCard(uiState)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = viewModel::syncNow) {
-                        Text("Back up now")
-                    }
-                    OutlinedButton(onClick = onSettingsClick) {
-                        Text("Settings")
-                    }
-                }
-            }
+            HomeBody(
+                uiState = uiState,
+                onPairClick = onPairClick,
+                onSettingsClick = onSettingsClick,
+                onSyncNow = viewModel::syncNow,
+                onFixReadiness = { item -> ReadinessIntents.launch(context, item.check) },
+            )
 
             Text(text = "v${uiState.appVersion}", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+/**
+ * Everything below the status line. Device permissions appear either way:
+ * before pairing they are worth fixing up front, and after pairing they
+ * are the first thing to check when nothing seems to be uploading.
+ */
+@Composable
+private fun HomeBody(
+    uiState: HomeUiState,
+    onPairClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onSyncNow: () -> Unit,
+    onFixReadiness: (ReadinessItem) -> Unit,
+) {
+    if (!uiState.isEnrolled) {
+        Button(onClick = onPairClick) {
+            Text("Pair with server")
+        }
+        ReadinessCard(uiState, onFixReadiness)
+        return
+    }
+    StatusCard(uiState)
+    ReadinessCard(uiState, onFixReadiness)
+    ConfigCard(uiState)
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Button(onClick = onSyncNow) {
+            Text("Back up now")
+        }
+        OutlinedButton(onClick = onSettingsClick) {
+            Text("Settings")
         }
     }
 }

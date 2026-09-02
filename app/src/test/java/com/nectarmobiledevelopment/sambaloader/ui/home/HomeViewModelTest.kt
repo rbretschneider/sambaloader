@@ -12,11 +12,14 @@ import com.nectarmobiledevelopment.sambaloader.core.data.identity.Enrollment
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.WifiRequirement
 import com.nectarmobiledevelopment.sambaloader.core.network.api.NetworkConditions
+import com.nectarmobiledevelopment.sambaloader.core.system.ReadinessCheck
+import com.nectarmobiledevelopment.sambaloader.core.system.ReadinessStatus
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaAccess
 import com.nectarmobiledevelopment.sambaloader.core.testing.data.FakeIdentityRepository
 import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeMediaSource
 import com.nectarmobiledevelopment.sambaloader.core.testing.data.FakeSecureKeyValueStore
 import com.nectarmobiledevelopment.sambaloader.core.testing.sync.FakeSyncTrigger
+import com.nectarmobiledevelopment.sambaloader.core.testing.system.FakeSystemReadinessChecker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -64,6 +67,7 @@ class HomeViewModelTest {
 
     private var mediaAccess = MediaAccess.FULL
     private var isMetered = false
+    private val systemReadiness = FakeSystemReadinessChecker()
     private var nowMillis = 1_756_500_000_000L
     private val media = FakeMediaSource()
 
@@ -75,6 +79,7 @@ class HomeViewModelTest {
         mediaAccessChecker = { mediaAccess },
         mediaSource = media,
         networkConditions = { isMetered },
+        systemReadinessChecker = systemReadiness,
         timeProvider = { nowMillis },
         syncTrigger = syncTrigger,
     )
@@ -254,5 +259,78 @@ class HomeViewModelTest {
         mediaAccess = MediaAccess.FULL
 
         assertNull(viewModel().uiState.value.warning)
+    }
+
+    @Test
+    fun `the dashboard lists every device permission check`() {
+        enroll()
+
+        val state = viewModel().uiState.value
+
+        assertEquals(ReadinessCheck.entries.size, state.readiness.size)
+        assertEquals("All set", state.readinessSummary)
+    }
+
+    @Test
+    fun `a missing battery exemption is surfaced as critical and counted`() {
+        enroll()
+        systemReadiness.set(ReadinessCheck.BATTERY_OPTIMISATION, ReadinessStatus.CRITICAL)
+
+        val state = viewModel().uiState.value
+
+        assertTrue(state.hasCriticalReadinessProblem)
+        assertEquals(
+            ReadinessCheck.BATTERY_OPTIMISATION,
+            state.readinessNeedingAttention.first().check,
+        )
+    }
+
+    @Test
+    fun `critical problems are listed before warnings so the worst is fixed first`() {
+        enroll()
+        systemReadiness.set(ReadinessCheck.NOTIFICATIONS, ReadinessStatus.WARNING)
+        systemReadiness.set(ReadinessCheck.PHOTO_ACCESS, ReadinessStatus.CRITICAL)
+
+        val needing = viewModel().uiState.value.readinessNeedingAttention
+
+        assertEquals(ReadinessCheck.PHOTO_ACCESS, needing.first().check)
+        assertEquals(ReadinessCheck.NOTIFICATIONS, needing.last().check)
+    }
+
+    @Test
+    fun `checks that do not apply are left out of the summary count`() {
+        enroll()
+        systemReadiness.set(ReadinessCheck.ALL_FILES_ACCESS, ReadinessStatus.NOT_NEEDED)
+        systemReadiness.set(ReadinessCheck.NOTIFICATIONS, ReadinessStatus.WARNING)
+
+        // Four applicable checks, three of them satisfied.
+        assertEquals("3 of 4 in place", viewModel().uiState.value.readinessSummary)
+    }
+
+    @Test
+    fun `all-files access is only demanded when local deletion is switched on`() {
+        enroll()
+        settings.setLocalDeletion(enabled = true, retentionDays = 7)
+
+        viewModel().uiState.value
+
+        assertEquals(true, systemReadiness.lastLocalDeletionEnabled)
+    }
+
+    @Test
+    fun `returning from system settings re-checks instead of showing a stale problem`() = runTest {
+        enroll()
+        systemReadiness.set(ReadinessCheck.BATTERY_OPTIMISATION, ReadinessStatus.CRITICAL)
+        val model = viewModel()
+        assertTrue(model.uiState.first().hasCriticalReadinessProblem)
+
+        // The user grants it in system settings and comes back.
+        systemReadiness.set(ReadinessCheck.BATTERY_OPTIMISATION, ReadinessStatus.OK)
+        model.refreshPermissions()
+
+        // Suspends until the recomputed state arrives, so a stale value
+        // fails the test rather than passing it by accident.
+        val state = model.uiState.first { !it.hasCriticalReadinessProblem }
+        assertFalse(state.hasCriticalReadinessProblem)
     }
 }

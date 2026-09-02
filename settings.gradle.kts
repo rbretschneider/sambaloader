@@ -20,6 +20,7 @@ rootProject.name = "sambaloader"
 include(":app")
 include(":core:data")
 include(":core:media")
+include(":core:system")
 include(":core:network")
 include(":core:crypto")
 include(":core:testing")

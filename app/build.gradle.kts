@@ -89,6 +89,7 @@ dependencies {
     implementation(project(":core:data"))
     implementation(project(":core:crypto"))
     implementation(project(":core:media"))
+    implementation(project(":core:system"))
     implementation(project(":sync"))
     implementation(libs.work.runtime.ktx)
     implementation(libs.androidx.hilt.work)

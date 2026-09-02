@@ -3,6 +3,8 @@ package com.nectarmobiledevelopment.sambaloader.ui.home
 import com.nectarmobiledevelopment.sambaloader.core.data.health.SyncHealth
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.WifiRequirement
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaAccess
+import com.nectarmobiledevelopment.sambaloader.core.system.ReadinessItem
+import com.nectarmobiledevelopment.sambaloader.core.system.ReadinessStatus
 
 /** Everything the home screen renders. */
 data class HomeUiState(
@@ -24,7 +26,32 @@ data class HomeUiState(
     val waitingForWifiCount: Int,
     val mediaAccess: MediaAccess,
     val syncHealth: SyncHealth,
+    /** OS permissions and exemptions, checked every time the screen resumes. */
+    val readiness: List<ReadinessItem> = emptyList(),
 ) {
+
+    /** Rows the user should act on, worst first. */
+    val readinessNeedingAttention: List<ReadinessItem>
+        get() = readiness.filter { it.needsAttention }
+            .sortedBy { if (it.status == ReadinessStatus.CRITICAL) 0 else 1 }
+
+    val hasCriticalReadinessProblem: Boolean
+        get() = readiness.any { it.status == ReadinessStatus.CRITICAL }
+
+    /** "3 of 5 in place" — the one-line answer to "is this set up right?". */
+    val readinessSummary: String
+        get() {
+            val applicable = readiness.filter { it.status != ReadinessStatus.NOT_NEEDED }
+            if (applicable.isEmpty()) {
+                return "Checking…"
+            }
+            val ok = applicable.count { it.status == ReadinessStatus.OK }
+            return if (ok == applicable.size) {
+                "All set"
+            } else {
+                "$ok of ${applicable.size} in place"
+            }
+        }
 
     val uploadDelaySummary: String
         get() = if (uploadDelayMinutes == 0) "Off" else "$uploadDelayMinutes min"

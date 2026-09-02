@@ -19,6 +19,7 @@ detekt {
             "app/src",
             "core/data/src",
             "core/media/src",
+            "core/system/src",
             "core/network/src",
             "core/crypto/src",
             "core/testing/src",

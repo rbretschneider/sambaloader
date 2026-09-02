@@ -18,6 +18,8 @@ import com.nectarmobiledevelopment.sambaloader.core.media.MediaAccess
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaAccessChecker
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaSource
 import com.nectarmobiledevelopment.sambaloader.core.network.api.NetworkConditions
+import com.nectarmobiledevelopment.sambaloader.core.system.ReadinessItem
+import com.nectarmobiledevelopment.sambaloader.core.system.SystemReadinessChecker
 import com.nectarmobiledevelopment.sambaloader.sync.SyncTrigger
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.net.URI
@@ -43,6 +45,7 @@ class HomeViewModel @Inject constructor(
     private val mediaAccessChecker: MediaAccessChecker,
     private val mediaSource: MediaSource,
     private val networkConditions: NetworkConditions,
+    private val systemReadinessChecker: SystemReadinessChecker,
     private val timeProvider: TimeProvider,
     private val syncTrigger: SyncTrigger,
 ) : ViewModel() {
@@ -53,26 +56,38 @@ class HomeViewModel @Inject constructor(
     /** Folder id -> display name, so the summary can name what is synced. */
     private val folderNames = MutableStateFlow<Map<String, String>>(emptyMap())
 
+    /**
+     * Re-read on every resume, like [mediaAccess]: the user fixes these in
+     * system settings and comes back, so a cached answer would show the
+     * problem as still unfixed.
+     */
+    private val readiness = MutableStateFlow(currentReadiness())
+
+    /**
+     * The two resume-scoped sources, paired so the main combine keeps a
+     * fixed six positional arguments.
+     */
+    private val deviceState = combine(folderNames, readiness, ::DeviceState)
+
     val uiState: StateFlow<HomeUiState> = combine(
         identityRepository.observe(),
         assetRepository.observeCountsByState(),
         settingsRepository.observe(),
         syncHealthRepository.observe(),
         mediaAccess,
-        folderNames,
+        deviceState,
     ) { values ->
         @Suppress("UNCHECKED_CAST")
         val counts = (values[1] as List<StateCount>).associate { it.state to it.count }
         val settings = values[2] as SyncSettings
-        @Suppress("UNCHECKED_CAST")
-        val names = values.last() as Map<String, String>
+        val device = values.last() as DeviceState
         toUiState(
             enrollment = values[0] as Enrollment?,
             counts = counts,
             settings = settings,
             lastSuccessEpochMillis = values[3] as Long?,
             access = values[4] as MediaAccess,
-            folderNames = names,
+            device = device,
             waitingForWifiCount = countWaitingForWifi(settings),
         )
     }.stateIn(
@@ -84,9 +99,14 @@ class HomeViewModel @Inject constructor(
             settingsRepository.current(),
             syncHealthRepository.lastSuccessEpochMillis(),
             mediaAccess.value,
-            emptyMap(),
+            DeviceState(emptyMap(), readiness.value),
             0,
         ),
+    )
+
+    private data class DeviceState(
+        val folderNames: Map<String, String>,
+        val readiness: List<ReadinessItem>,
     )
 
     /**
@@ -111,7 +131,14 @@ class HomeViewModel @Inject constructor(
 
     fun refreshPermissions() {
         mediaAccess.value = mediaAccessChecker.current()
+        readiness.value = currentReadiness()
         loadFolderNames()
+    }
+
+    private fun currentReadiness(): List<ReadinessItem> {
+        return systemReadinessChecker.current(
+            isLocalDeletionEnabled = settingsRepository.current().isLocalDeletionEnabled,
+        )
     }
 
     private fun loadFolderNames() {
@@ -133,7 +160,7 @@ class HomeViewModel @Inject constructor(
         settings: SyncSettings,
         lastSuccessEpochMillis: Long?,
         access: MediaAccess,
-        folderNames: Map<String, String>,
+        device: DeviceState,
         waitingForWifiCount: Int,
     ): HomeUiState {
         fun count(state: AssetState) = counts[state] ?: 0
@@ -148,7 +175,8 @@ class HomeViewModel @Inject constructor(
             failedCount = count(AssetState.FAILED_PERMANENT),
             deletedCount = count(AssetState.DELETED_LOCALLY),
             isSyncing = count(AssetState.UPLOADING) > 0,
-            backedUpFolderSummary = folderSummary(settings, folderNames),
+            backedUpFolderSummary = folderSummary(settings, device.folderNames),
+            readiness = device.readiness,
             wifiRequirement = settings.wifiRequirement,
             largeFileThresholdMb = settings.largeFileThresholdMb,
             uploadDelayMinutes = settings.uploadDelayMinutes,

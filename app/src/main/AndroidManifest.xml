@@ -19,6 +19,12 @@
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
 
+    <!-- Lets the app offer the battery-exemption dialog in one tap from the
+         dashboard. Without the exemption Android defers background uploads
+         for hours, which is the difference between "backed up" and "backed
+         up eventually" (FRD 8.6). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <!-- Upload runs as a dataSync foreground service (FRD 8.8). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
