@@ -6,6 +6,8 @@ import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -101,6 +103,7 @@ private fun FoldersSection(
  * shot before anyone else sees it.
  */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun UploadDelaySection(delayMinutes: Int, onDelayChange: (Int) -> Unit) {
     SectionCard(title = "Wait before uploading") {
         Text(
@@ -112,7 +115,11 @@ private fun UploadDelaySection(delayMinutes: Int, onDelayChange: (Int) -> Unit) 
             },
             style = MaterialTheme.typography.bodySmall,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Seven choices never fit one line; wrap instead of crushing them.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             for (minutes in SyncSettings.UPLOAD_DELAY_CHOICES_MINUTES) {
                 FilterChip(
                     selected = delayMinutes == minutes,
@@ -129,6 +136,7 @@ private fun UploadDelaySection(delayMinutes: Int, onDelayChange: (Int) -> Unit) 
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun DeletionSection(
     state: SettingsUiState,
     onToggle: (Boolean) -> Unit,
@@ -146,7 +154,10 @@ private fun DeletionSection(
             return@SectionCard
         }
         Text("Wait ${state.retentionDays} day(s) before deleting:")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             for (days in RETENTION_CHOICES) {
                 FilterChip(
                     selected = state.retentionDays == days,

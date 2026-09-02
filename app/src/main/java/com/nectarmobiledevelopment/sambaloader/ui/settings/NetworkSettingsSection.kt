@@ -2,6 +2,8 @@ package com.nectarmobiledevelopment.sambaloader.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.selection.selectable
@@ -21,6 +23,7 @@ import com.nectarmobiledevelopment.sambaloader.core.data.settings.WifiRequiremen
  * used at all, for how big a file, and whether the phone must be charging.
  */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 internal fun NetworkSection(
     state: SettingsUiState,
     onWifiRequirementChange: (WifiRequirement) -> Unit,
@@ -41,7 +44,13 @@ internal fun NetworkSection(
 
         if (state.wifiRequirement == WifiRequirement.FOR_LARGE_FILES) {
             Text("Anything this size or larger waits for Wi-Fi:")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // FlowRow, not Row: five chips do not fit one line on a narrow
+            // phone, and a plain Row squeezes the last one until its label
+            // wraps a character per line.
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 for (sizeMb in WifiRequirement.LARGE_FILE_CHOICES_MB) {
                     FilterChip(
                         selected = state.largeFileThresholdMb == sizeMb,
