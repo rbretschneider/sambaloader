@@ -47,6 +47,17 @@
             </intent-filter>
         </activity>
 
+        <!-- zxing's own manifest pins its scanner to sensorLandscape, which
+             forces the phone sideways to read a QR that scans perfectly
+             well upright. ScanOptions.setOrientationLocked(false) cannot
+             undo that — it only stops the library re-locking at runtime,
+             and a manifest attribute wins. Replace it at merge time so the
+             scanner follows however the device is held. -->
+        <activity
+            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="unspecified"
+            tools:replace="android:screenOrientation" />
+
         <!-- Share-sheet target. Android does not let one app add entries to
              another app's own long-press menu, so "Share -> Sambaloader" is
              the route in for pictures from mail, chat and the browser.

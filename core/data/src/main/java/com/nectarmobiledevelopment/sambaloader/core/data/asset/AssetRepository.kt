@@ -118,6 +118,19 @@ class AssetRepository @Inject constructor(
         return dao.allIds().toSet()
     }
 
+    /**
+     * Drops all backup history, so the next scan rediscovers the whole
+     * camera roll and re-offers it to the server.
+     *
+     * Only for unpairing. A new server has never seen this library, and
+     * rows saying UPLOADED would silently exclude every existing photo
+     * from the first sync — the app would report success having sent
+     * nothing. Deletes only the app's own records; no media is touched.
+     */
+    suspend fun forgetEverything() {
+        dao.deleteAll()
+    }
+
     /** The backing file vanished from MediaStore — forget the asset. */
     suspend fun deleteVanished(mediaStoreId: Long) {
         dao.delete(mediaStoreId)

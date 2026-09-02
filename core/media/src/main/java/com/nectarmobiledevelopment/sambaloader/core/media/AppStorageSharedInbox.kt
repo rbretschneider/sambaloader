@@ -54,6 +54,10 @@ class AppStorageSharedInbox @Inject constructor(
         return directory.listFiles()?.sumOf { it.length() } ?: 0L
     }
 
+    override fun clear() {
+        directory.listFiles()?.forEach { it.delete() }
+    }
+
     /**
      * Resolves a stored URI back to a file, refusing anything outside the
      * inbox: the asset row is trusted data, but a path check here means a

@@ -8,6 +8,7 @@ import com.nectarmobiledevelopment.sambaloader.core.data.settings.WifiRequiremen
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaDeleter
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaFolder
 import com.nectarmobiledevelopment.sambaloader.core.media.MediaSource
+import com.nectarmobiledevelopment.sambaloader.enrollment.UnpairDeviceUseCase
 import com.nectarmobiledevelopment.sambaloader.sync.SyncTrigger
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -26,6 +27,7 @@ class SettingsViewModel @Inject constructor(
     private val mediaDeleter: MediaDeleter,
     private val settingsRepository: SyncSettingsRepository,
     private val syncTrigger: SyncTrigger,
+    private val unpairDevice: UnpairDeviceUseCase,
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(stateFrom(settingsRepository.current(), emptyList()))
@@ -86,6 +88,18 @@ class SettingsViewModel @Inject constructor(
     fun setLocalDeletion(enabled: Boolean) {
         settingsRepository.setLocalDeletion(enabled, settingsRepository.current().retentionDays)
         applySettings()
+    }
+
+    /**
+     * Forgets the server, this device's key, and all backup history.
+     * Emits [SettingsUiState.isUnpaired] so the screen can send the user
+     * back to pairing.
+     */
+    fun unpair() {
+        viewModelScope.launch {
+            unpairDevice()
+            mutableState.value = mutableState.value.copy(isUnpaired = true)
+        }
     }
 
     fun setRetentionDays(days: Int) {

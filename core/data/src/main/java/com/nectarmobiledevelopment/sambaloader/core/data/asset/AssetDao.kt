@@ -107,6 +107,10 @@ interface AssetDao {
     @Query("SELECT mediaStoreId FROM assets")
     suspend fun allIds(): List<Long>
 
+    /** Forgets all backup history — see [AssetRepository.forgetEverything]. */
+    @Query("DELETE FROM assets")
+    suspend fun deleteAll()
+
     /** Server-confirmed assets whose retention clock has elapsed (D7). */
     @Query(
         "SELECT * FROM assets WHERE state IN ('UPLOADED', 'SKIPPED_REMOTE_HAS') " +

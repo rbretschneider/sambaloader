@@ -16,6 +16,17 @@ class ScanCursorRepository @Inject constructor(
         )
     }
 
+    /**
+     * Rewinds the discovery watermark to zero so the next scan walks the
+     * entire camera roll again. Pairs with
+     * [com.nectarmobiledevelopment.sambaloader.core.data.asset.AssetRepository.forgetEverything];
+     * clearing the assets without this would leave the scanner convinced
+     * it had already seen everything.
+     */
+    suspend fun reset() {
+        advance(lastDateAddedEpochSeconds = 0, generation = null)
+    }
+
     suspend fun advance(lastDateAddedEpochSeconds: Long, generation: Long?) {
         dao.put(
             ScanCursorEntity(

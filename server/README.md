@@ -139,6 +139,31 @@ exactly. The non-negotiables:
 
 If you run the bundled compose file instead, all of this is already done.
 
+### Publishing the CA material to your nginx
+
+`uploadd` generates the CA into `./ca` on first start, but **your** nginx
+reads it from its own directory, so it has to be copied across once —
+and again any time the certificate is reissued (a changed `PUBLIC_URL`
+or `EXTRA_SANS`) or a device is revoked (`crl.pem` changes).
+
+```bash
+cd /path/to/sambaloader
+sudo install -d -m 755 /etc/nginx/sambaloader_ca /var/www/sambaloader_admin
+sudo install -m 644 ca/ca.crt ca/crl.pem ca/server.crt /etc/nginx/sambaloader_ca/
+sudo install -m 600 ca/server.key /etc/nginx/sambaloader_ca/
+sudo install -m 644 nginx/admin/index.html /var/www/sambaloader_admin/index.html
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Two traps worth naming:
+
+- **Your nginx must serve the private CA's `server.crt`**, not a Let's
+  Encrypt certificate. The app pins the CA from the pairing QR and trusts
+  nothing else, so a publicly-trusted certificate is rejected.
+- **There is no CRL watcher in this mode.** The bundled compose file runs
+  one; a hand-rolled nginx does not, so revocation only takes effect
+  after you copy the new `crl.pem` across and reload.
+
 ## uploadd endpoints
 
 | Route | Listener | Auth |

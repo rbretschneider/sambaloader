@@ -30,4 +30,10 @@ interface SharedInbox {
 
     /** Total bytes currently held, for reporting. */
     fun sizeBytes(): Long
+
+    /**
+     * Drops every held copy. Used when unpairing: the asset rows that
+     * reference them are going away, so the files would leak otherwise.
+     */
+    fun clear()
 }

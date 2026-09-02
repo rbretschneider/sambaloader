@@ -38,4 +38,8 @@ class FakeSharedInbox : SharedInbox {
     override fun sizeBytes(): Long {
         return files.values.sumOf { it.size.toLong() }
     }
+
+    override fun clear() {
+        files.clear()
+    }
 }

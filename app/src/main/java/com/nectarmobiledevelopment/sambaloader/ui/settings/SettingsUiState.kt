@@ -17,6 +17,8 @@ data class SettingsUiState(
     val canDeleteSilently: Boolean = false,
     /** No explicit choice yet — camera folders are used by default. */
     val isUsingDefaultFolders: Boolean = true,
+    /** Set once unpairing finishes, so the screen can leave. */
+    val isUnpaired: Boolean = false,
 ) {
     data class FolderChoice(
         val folder: MediaFolder,

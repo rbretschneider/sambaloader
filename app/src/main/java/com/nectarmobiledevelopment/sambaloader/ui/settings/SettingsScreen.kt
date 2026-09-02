@@ -24,6 +24,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +41,14 @@ fun SettingsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // Nothing on this screen applies to an unpaired device, so leave as
+    // soon as the reset lands rather than showing stale settings.
+    LaunchedEffect(state.isUnpaired) {
+        if (state.isUnpaired) {
+            onBack()
+        }
+    }
 
     Scaffold { innerPadding ->
         Column(
@@ -65,6 +74,7 @@ fun SettingsScreen(
                 onRetentionChange = viewModel::setRetentionDays,
                 onGrantAccess = { openAllFilesAccessSettings(context) },
             )
+            UnpairSection(onConfirm = viewModel::unpair)
             OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
                 Text("Done")
             }
