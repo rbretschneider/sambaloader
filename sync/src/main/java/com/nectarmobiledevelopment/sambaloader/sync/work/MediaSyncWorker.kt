@@ -39,7 +39,8 @@ class MediaSyncWorker @AssistedInject constructor(
             scanner.scan()
             // Drains repeatedly, not just one batch: a first-run backfill
             // must not need hundreds of scheduled runs to finish.
-            val summary = runner.drain { done, total ->
+            val isForced = inputData.getBoolean(KEY_FORCE, false)
+            val summary = runner.drain(force = isForced) { done, total ->
                 promoteToForeground(remaining = total - done)
             }
             scheduleWakeUpForHeldAssets(summary)
@@ -88,7 +89,15 @@ class MediaSyncWorker @AssistedInject constructor(
         }
     }
 
-    private companion object {
-        const val MAX_RUN_ATTEMPTS = 3
+    companion object {
+        /**
+         * Set by [SyncScheduler.triggerImmediateScan] only: marks the run
+         * as user-initiated, which skips upload grace periods and retry
+         * backoffs. Scheduled work carries no input data, so it defaults
+         * to false.
+         */
+        const val KEY_FORCE = "force"
+
+        private const val MAX_RUN_ATTEMPTS = 3
     }
 }

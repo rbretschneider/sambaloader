@@ -44,6 +44,7 @@ class UploadEngineTest {
     private lateinit var scanner: AssetScanner
     private lateinit var hasher: AssetHasher
     private lateinit var engine: UploadEngine
+    private lateinit var health: SyncHealthRepository
 
     @Before
     fun setUp() {
@@ -55,12 +56,13 @@ class UploadEngineTest {
         val clock = TimeProvider { nowMillis }
         scanner = AssetScanner(media, assets, ScanCursorRepository(db.scanCursorDao()), settings)
         hasher = AssetHasher(media, assets, clock)
+        health = SyncHealthRepository(FakeSecureKeyValueStore(), clock)
         engine = UploadEngine(
             assetRepository = assets,
             mediaSource = media,
             transportProvider = { if (enrolled) transport else null },
             timeProvider = clock,
-            syncHealthRepository = SyncHealthRepository(FakeSecureKeyValueStore(), clock),
+            syncHealthRepository = health,
             settingsRepository = settings,
             networkConditions = { isMetered },
             sharedInbox = inbox,
@@ -88,6 +90,34 @@ class UploadEngineTest {
         assertEquals(AssetState.UPLOADED, assets.byId(1)!!.state)
         assertEquals(AssetState.UPLOADED, assets.byId(2)!!.state)
         assertEquals(2, transport.uploadedHashes.size)
+    }
+
+    @Test
+    fun `a pass with nothing to upload still counts as a healthy sync`() = runTest {
+        val summary = engine.uploadPending()
+
+        assertEquals(0, summary.uploaded)
+        assertEquals(nowMillis, health.lastSuccessEpochMillis())
+    }
+
+    @Test
+    fun `a pass where everything is held for the grace period still counts as healthy`() = runTest {
+        settings.setUploadDelayMinutes(60)
+        seedRecent(1, minutesAgo = 0)
+
+        val summary = engine.uploadPending()
+
+        assertEquals(0, summary.uploaded)
+        assertEquals(nowMillis, health.lastSuccessEpochMillis())
+    }
+
+    @Test
+    fun `an unenrolled pass proves nothing about health`() = runTest {
+        enrolled = false
+
+        engine.uploadPending()
+
+        assertNull(health.lastSuccessEpochMillis())
     }
 
     @Test
@@ -263,6 +293,59 @@ class UploadEngineTest {
             nowMillis / 1000 - 2 * 60,
             summary.nextHeldCaptureTimeEpochSeconds,
         )
+    }
+
+    @Test
+    fun `a forced run overrides the upload grace period`() = runTest {
+        settings.setUploadDelayMinutes(60)
+        seedRecent(1, minutesAgo = 0)
+
+        assertEquals(0, engine.uploadPending().uploaded)
+
+        val forced = engine.uploadPending(force = true)
+
+        assertEquals(1, forced.uploaded)
+        assertEquals(AssetState.UPLOADED, assets.byId(1)!!.state)
+    }
+
+    @Test
+    fun `a forced run overrides a retry backoff instead of waiting it out`() = runTest {
+        seedHashed(1)
+        transport.nextUploadResult = { TransportResult.Failure(TransportError.HttpError(507)) }
+        engine.uploadPending()
+        assertEquals(AssetState.FAILED_RETRYABLE, assets.byId(1)!!.state)
+
+        transport.nextUploadResult = null
+        // No clock advance: the backoff has NOT elapsed.
+        assertEquals("a scheduled pass must still respect the backoff", 0, engine.uploadPending().uploaded)
+
+        assertEquals(1, engine.uploadPending(force = true).uploaded)
+        assertEquals(AssetState.UPLOADED, assets.byId(1)!!.state)
+    }
+
+    @Test
+    fun `forcing cannot resurrect a permanently failed upload`() = runTest {
+        seedHashed(1)
+        transport.nextUploadResult = { TransportResult.Failure(TransportError.HttpError(400)) }
+        engine.uploadPending()
+        assertEquals(AssetState.FAILED_PERMANENT, assets.byId(1)!!.state)
+
+        transport.nextUploadResult = null
+
+        assertEquals(0, engine.uploadPending(force = true).uploaded)
+        assertEquals(AssetState.FAILED_PERMANENT, assets.byId(1)!!.state)
+    }
+
+    @Test
+    fun `a forced run still honours the metered size cap - it must not spend a data plan`() = runTest {
+        settings.setWifiRequirement(WifiRequirement.ALWAYS)
+        isMetered = true
+        seedHashed(1)
+
+        val forced = engine.uploadPending(force = true)
+
+        assertEquals(0, forced.uploaded)
+        assertTrue(transport.uploadedHashes.isEmpty())
     }
 
     @Test

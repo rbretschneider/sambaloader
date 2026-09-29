@@ -6,8 +6,10 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
 import com.nectarmobiledevelopment.sambaloader.sync.SyncTrigger
 import java.util.concurrent.TimeUnit
@@ -189,9 +191,17 @@ class SyncScheduler @Inject constructor(
         triggerImmediateScan()
     }
 
-    /** User-initiated sync: runs regardless of the Wi-Fi-only setting. */
+    /**
+     * User-initiated sync: carries no WorkManager constraints, and tells
+     * the worker to skip upload grace periods and retry backoffs too. A
+     * button labelled "Back up now" that quietly honours a 15-minute delay
+     * is a lie.
+     */
     fun triggerImmediateScan() {
-        val request = OneTimeWorkRequestBuilder<MediaSyncWorker>().build()
+        val request = OneTimeWorkRequestBuilder<MediaSyncWorker>()
+            .setInputData(workDataOf(MediaSyncWorker.KEY_FORCE to true))
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .build()
         workManager.enqueueUniqueWork(
             IMMEDIATE_WORK_NAME,
             ExistingWorkPolicy.REPLACE,

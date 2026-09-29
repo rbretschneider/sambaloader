@@ -24,9 +24,14 @@ class SyncRunner @Inject constructor(
     private val timeProvider: TimeProvider,
 ) {
 
+    /**
+     * @param force a user-initiated run: upload grace periods and retry
+     * backoffs are skipped (see [UploadEngine.uploadPending]).
+     */
     suspend fun drain(
         budget: Duration = DEFAULT_BUDGET,
         maxRounds: Int = DEFAULT_MAX_ROUNDS,
+        force: Boolean = false,
         onProgress: suspend (done: Int, total: Int) -> Unit = { _, _ -> },
     ): DrainSummary {
         val deadline = timeProvider.nowEpochMillis() + budget.inWholeMilliseconds
@@ -40,7 +45,7 @@ class SyncRunner @Inject constructor(
         while (rounds < maxRounds && timeProvider.nowEpochMillis() < deadline) {
             rounds++
             val hashedThisRound = hasher.hashPending()
-            val summary = uploadEngine.uploadPending(onProgress)
+            val summary = uploadEngine.uploadPending(force = force, onProgress = onProgress)
             hashed += hashedThisRound
             uploaded += summary.uploaded
             skipped += summary.skippedRemoteHas

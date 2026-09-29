@@ -6,7 +6,11 @@ package com.nectarmobiledevelopment.sambaloader.sync
  */
 interface SyncTrigger {
 
-    /** User-initiated backup run; ignores the Wi-Fi-only setting. */
+    /**
+     * User-initiated backup run: starts without waiting for scheduling
+     * constraints, and skips the upload grace period and any retry
+     * backoff. Metered-data size caps still apply.
+     */
     fun syncNow()
 
     /** Re-arms scheduled work after a settings change. */

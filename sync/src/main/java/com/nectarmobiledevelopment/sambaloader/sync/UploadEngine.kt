@@ -47,26 +47,48 @@ class UploadEngine @Inject constructor(
 
     private val backoffPolicy = BackoffPolicy()
 
-    suspend fun uploadPending(onProgress: suspend (done: Int, total: Int) -> Unit = { _, _ -> }): UploadSummary {
+    /**
+     * @param force a user-initiated run ("Back up now"): the upload grace
+     * period and retry backoff are waits the user is explicitly overriding,
+     * so both are ignored. Metered-data caps are NOT — those protect the
+     * user's data plan, not their patience.
+     */
+    suspend fun uploadPending(
+        force: Boolean = false,
+        onProgress: suspend (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): UploadSummary {
         val transport = transportProvider.current()
             ?: return UploadSummary(isEnrolled = false)
 
         recoverStaleUploads()
-        promoteDueRetries()
+        promoteDueRetries(force)
 
         // Grace period (settings): a photo is not uploaded until it has
         // survived on the phone for this long, so a bad shot can be
         // deleted before the family sees it. Anchored to capture time, so
-        // an existing library is never held back.
+        // an existing library is never held back. A forced run collapses
+        // the window to zero — the user just said "go".
         val settings = settingsRepository.current()
-        val eligibleCapturedBefore = TimeUnit.MILLISECONDS.toSeconds(timeProvider.nowEpochMillis()) -
-            TimeUnit.MINUTES.toSeconds(settings.uploadDelayMinutes.toLong())
+        val eligibleCapturedBefore = if (force) {
+            // No cutoff at all, rather than "captured before now": a photo
+            // whose MediaStore timestamp is a second ahead of our clock
+            // must not survive a run the user asked for by hand.
+            NO_GRACE_PERIOD_CUTOFF
+        } else {
+            TimeUnit.MILLISECONDS.toSeconds(timeProvider.nowEpochMillis()) -
+                TimeUnit.MINUTES.toSeconds(settings.uploadDelayMinutes.toLong())
+        }
 
         val batch = nextBatch(settings, eligibleCapturedBefore)
         val pending = batch.assets
         val waitingForWifi = batch.waitingForWifi
 
         if (pending.isEmpty()) {
+            // An idle pass is still proof the background pipeline is alive:
+            // had the OEM killed us, this code would not be running at all.
+            // Without this, a day with no new photos is indistinguishable
+            // from a day of being killed (FRD §8.10).
+            syncHealthRepository.recordSuccess()
             return UploadSummary(
                 nextHeldCaptureTimeEpochSeconds =
                 assetRepository.earliestHeldCaptureTime(eligibleCapturedBefore),
@@ -192,8 +214,14 @@ class UploadEngine @Inject constructor(
         )
     }
 
-    /** FAILED_RETRYABLE rows re-enter HASHED once their backoff elapses. */
-    private suspend fun promoteDueRetries() {
+    /**
+     * FAILED_RETRYABLE rows re-enter HASHED once their backoff elapses —
+     * immediately when [force] is set, since waiting out a backoff is
+     * exactly what "Back up now" is asking to skip. An exhausted retry
+     * budget is still permanent: forcing cannot make a rejected file
+     * acceptable.
+     */
+    private suspend fun promoteDueRetries(force: Boolean) {
         val now = timeProvider.nowEpochMillis()
         for (asset in assetRepository.inState(AssetState.FAILED_RETRYABLE, BATCH_LIMIT)) {
             if (backoffPolicy.isExhausted(asset.attemptCount)) {
@@ -205,7 +233,7 @@ class UploadEngine @Inject constructor(
             }
             val delay = backoffPolicy.delayFor(asset.attemptCount.coerceAtLeast(1))
             val dueAt = (asset.lastAttemptAtEpochMillis ?: 0) + delay.inWholeMilliseconds
-            if (now >= dueAt) {
+            if (force || now >= dueAt) {
                 assetRepository.resetToHashed(asset.mediaStoreId)
             }
         }
@@ -329,6 +357,9 @@ class UploadEngine @Inject constructor(
 
     private companion object {
         const val BATCH_LIMIT = 100
+
+        /** Capture-time cutoff that holds nothing back. */
+        const val NO_GRACE_PERIOD_CUTOFF = Long.MAX_VALUE
         val STALE_UPLOAD_WINDOW_MILLIS = 10.minutes.inWholeMilliseconds
     }
 }
