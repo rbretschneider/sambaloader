@@ -72,7 +72,9 @@ internal fun NetworkSection(
             onCheckedChange = onRequiresChargingChange,
         )
         Text(
-            "\"Back up now\" on the home screen always runs, regardless of these settings.",
+            "\"Back up now\" on the home screen runs immediately whatever the charging and " +
+                "delay settings say. The Wi-Fi rules above still apply — it will not spend " +
+                "mobile data you told it not to.",
             style = MaterialTheme.typography.bodySmall,
         )
     }

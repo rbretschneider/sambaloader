@@ -231,6 +231,33 @@ class MediaSyncWorkerTest {
     }
 
     @Test
+    fun `Back up now uploads a photo still inside its grace period`() = runBlocking<Unit> {
+        settings.setUploadDelayMinutes(60)
+        // Captured "just now" against the worker's fixed clock: a scheduled
+        // run would hold this for an hour.
+        media.addItem(1, dateAddedEpochSeconds = 1_756_500_000_000 / 1000)
+
+        scheduler.triggerImmediateScan()
+        val info = workManager
+            .getWorkInfosForUniqueWork(SyncScheduler.IMMEDIATE_WORK_NAME)
+            .get()
+            .single()
+        awaitTerminal(info.id)
+
+        assertEquals(AssetState.UPLOADED, assets.byId(1)!!.state)
+    }
+
+    @Test
+    fun `a scheduled run still honours the grace period`() = runBlocking<Unit> {
+        settings.setUploadDelayMinutes(60)
+        media.addItem(1, dateAddedEpochSeconds = 1_756_500_000_000 / 1000)
+
+        runContentTriggeredWorker()
+
+        assertEquals(AssetState.HASHED, assets.byId(1)!!.state)
+    }
+
+    @Test
     fun `reconciliation catches assets the content trigger missed`() = runBlocking<Unit> {
         // Simulate a trigger miss: item exists but nothing ran, and its
         // DATE_ADDED is below an already-advanced watermark.
