@@ -41,6 +41,7 @@ class SyncRunner @Inject constructor(
         var rounds = 0
         var nextHeldCaptureTime: Long? = null
         var waitingForWifi = 0
+        var wasOffline = false
 
         while (rounds < maxRounds && timeProvider.nowEpochMillis() < deadline) {
             rounds++
@@ -51,6 +52,7 @@ class SyncRunner @Inject constructor(
             skipped += summary.skippedRemoteHas
             nextHeldCaptureTime = summary.nextHeldCaptureTimeEpochSeconds
             waitingForWifi = summary.waitingForWifi
+            wasOffline = summary.wasOffline
 
             val madeProgress = hashedThisRound > 0 ||
                 summary.uploaded > 0 ||
@@ -59,13 +61,13 @@ class SyncRunner @Inject constructor(
                 // Nothing left to do, or the server is unreachable —
                 // either way, stop burning battery this run.
                 return DrainSummary(
-                    hashed, uploaded, skipped, rounds, true, nextHeldCaptureTime, waitingForWifi,
+                    hashed, uploaded, skipped, rounds, true, nextHeldCaptureTime, waitingForWifi, wasOffline,
                 )
             }
         }
         // Budget spent with work still pending: WorkManager runs us again.
         return DrainSummary(
-            hashed, uploaded, skipped, rounds, false, nextHeldCaptureTime, waitingForWifi,
+            hashed, uploaded, skipped, rounds, false, nextHeldCaptureTime, waitingForWifi, wasOffline,
         )
     }
 
@@ -89,4 +91,6 @@ data class DrainSummary(
     val nextHeldCaptureTimeEpochSeconds: Long? = null,
     /** Files held back because they are too large for a metered connection. */
     val waitingForWifi: Int = 0,
+    /** The last upload pass stopped because the server was unreachable. */
+    val wasOffline: Boolean = false,
 )

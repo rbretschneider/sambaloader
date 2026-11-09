@@ -96,6 +96,7 @@ class UploadEngine @Inject constructor(
             )
         }
         var reachedServer = false
+        var wasOffline = false
 
         val skipped = skipRemotelyPresent(transport, pending)
         val toUpload = pending.filter { it.sha256 !in skipped }
@@ -118,6 +119,7 @@ class UploadEngine @Inject constructor(
                     // failing every remaining asset against a dead network
                     // (and draining the battery doing it).
                     retryable++
+                    wasOffline = true
                     break
                 }
                 UploadDisposition.VANISHED -> Unit
@@ -133,6 +135,7 @@ class UploadEngine @Inject constructor(
             skippedRemoteHas = skipped.size,
             failedRetryable = retryable,
             failedPermanent = permanent,
+            wasOffline = wasOffline,
             nextHeldCaptureTimeEpochSeconds =
             assetRepository.earliestHeldCaptureTime(eligibleCapturedBefore),
             waitingForWifi = waitingForWifi,
