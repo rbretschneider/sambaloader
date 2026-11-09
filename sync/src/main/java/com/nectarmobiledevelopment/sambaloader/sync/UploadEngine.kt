@@ -69,15 +69,7 @@ class UploadEngine @Inject constructor(
         // an existing library is never held back. A forced run collapses
         // the window to zero — the user just said "go".
         val settings = settingsRepository.current()
-        val eligibleCapturedBefore = if (force) {
-            // No cutoff at all, rather than "captured before now": a photo
-            // whose MediaStore timestamp is a second ahead of our clock
-            // must not survive a run the user asked for by hand.
-            NO_GRACE_PERIOD_CUTOFF
-        } else {
-            TimeUnit.MILLISECONDS.toSeconds(timeProvider.nowEpochMillis()) -
-                TimeUnit.MINUTES.toSeconds(settings.uploadDelayMinutes.toLong())
-        }
+        val eligibleCapturedBefore = eligibleCapturedBefore(settings, force)
 
         val batch = nextBatch(settings, eligibleCapturedBefore)
         val pending = batch.assets
@@ -140,6 +132,17 @@ class UploadEngine @Inject constructor(
             assetRepository.earliestHeldCaptureTime(eligibleCapturedBefore),
             waitingForWifi = waitingForWifi,
         )
+    }
+
+    private fun eligibleCapturedBefore(settings: SyncSettings, force: Boolean): Long {
+        // A forced pass has no cutoff, including for photos whose timestamps
+        // are ahead of the phone's clock.
+        return if (force) {
+            NO_GRACE_PERIOD_CUTOFF
+        } else {
+            TimeUnit.MILLISECONDS.toSeconds(timeProvider.nowEpochMillis()) -
+                TimeUnit.MINUTES.toSeconds(settings.uploadDelayMinutes.toLong())
+        }
     }
 
     /**

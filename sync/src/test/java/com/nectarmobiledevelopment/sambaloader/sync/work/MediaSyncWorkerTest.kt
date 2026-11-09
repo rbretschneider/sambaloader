@@ -18,6 +18,8 @@ import com.nectarmobiledevelopment.sambaloader.core.data.health.SyncHealthReposi
 import com.nectarmobiledevelopment.sambaloader.core.data.scan.ScanCursorRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
 import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
+import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportError
+import com.nectarmobiledevelopment.sambaloader.core.network.api.TransportResult
 import com.nectarmobiledevelopment.sambaloader.core.testing.data.FakeSecureKeyValueStore
 import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeMediaSource
 import com.nectarmobiledevelopment.sambaloader.sync.AssetHasher
@@ -76,15 +78,15 @@ class MediaSyncWorkerTest {
                         com.nectarmobiledevelopment.sambaloader.core.testing.transport.FakeTransport().also {
                             httpFailure?.let { code ->
                                 it.nextUploadResult = {
-                                    com.nectarmobiledevelopment.sambaloader.core.network.api.TransportResult.Failure(
-                                        com.nectarmobiledevelopment.sambaloader.core.network.api.TransportError.HttpError(code),
+                                    TransportResult.Failure(
+                                        TransportError.HttpError(code),
                                     )
                                 }
                             }
                             if (serverUnreachable) {
                                 it.nextUploadResult = {
-                                    com.nectarmobiledevelopment.sambaloader.core.network.api.TransportResult.Failure(
-                                        com.nectarmobiledevelopment.sambaloader.core.network.api.TransportError.Timeout,
+                                    TransportResult.Failure(
+                                        TransportError.Timeout,
                                     )
                                 }
                             }
