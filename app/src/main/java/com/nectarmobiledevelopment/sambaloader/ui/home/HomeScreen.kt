@@ -10,18 +10,26 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,7 +67,18 @@ fun HomeScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Scaffold { innerPadding ->
+    val snackbarHostState = remember { SnackbarHostState() }
+    // The message lives in the view model and is consumed once shown, so
+    // rotation and recomposition never announce it twice.
+    LaunchedEffect(uiState.outcomeMessage) {
+        val message = uiState.outcomeMessage ?: return@LaunchedEffect
+        // Consuming first would change the effect's key and cancel the
+        // snackbar mid-display, so consume once it has been dismissed.
+        snackbarHostState.showSnackbar(message)
+        viewModel.consumeOutcomeMessage()
+    }
+
+    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -119,7 +138,14 @@ private fun HomeBody(
     ReadinessCard(uiState, onFixReadiness)
     ConfigCard(uiState)
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Button(onClick = onSyncNow) {
+        Button(onClick = onSyncNow, enabled = !uiState.isRunInProgress) {
+            if (uiState.isRunInProgress) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                )
+                Spacer(Modifier.width(8.dp))
+            }
             Text("Back up now")
         }
         OutlinedButton(onClick = onSettingsClick) {

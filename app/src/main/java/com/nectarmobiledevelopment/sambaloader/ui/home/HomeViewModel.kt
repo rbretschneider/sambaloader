@@ -20,16 +20,20 @@ import com.nectarmobiledevelopment.sambaloader.core.media.MediaSource
 import com.nectarmobiledevelopment.sambaloader.core.network.api.NetworkConditions
 import com.nectarmobiledevelopment.sambaloader.core.system.ReadinessItem
 import com.nectarmobiledevelopment.sambaloader.core.system.SystemReadinessChecker
+import com.nectarmobiledevelopment.sambaloader.sync.ImmediateRunState
 import com.nectarmobiledevelopment.sambaloader.sync.SyncTrigger
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.net.URI
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -63,11 +67,19 @@ class HomeViewModel @Inject constructor(
      */
     private val readiness = MutableStateFlow(currentReadiness())
 
+    /** The "Back up now" run: button state plus the not-yet-shown result. */
+    private val runState = MutableStateFlow(RunState())
+
+    /** Runs already announced (or finished before this screen existed). */
+    private val handledRunIds = mutableSetOf<String>()
+    private var hasBaseline = false
+    private var startingTimeout: Job? = null
+
     /**
-     * The two resume-scoped sources, paired so the main combine keeps a
-     * fixed six positional arguments.
+     * The resume-scoped sources and the run state, grouped so the main
+     * combine keeps a fixed six positional arguments.
      */
-    private val deviceState = combine(folderNames, readiness, ::DeviceState)
+    private val deviceState = combine(folderNames, readiness, runState, ::DeviceState)
 
     val uiState: StateFlow<HomeUiState> = combine(
         identityRepository.observe(),
@@ -99,7 +111,7 @@ class HomeViewModel @Inject constructor(
             settingsRepository.current(),
             syncHealthRepository.lastSuccessEpochMillis(),
             mediaAccess.value,
-            DeviceState(emptyMap(), readiness.value),
+            DeviceState(emptyMap(), readiness.value, runState.value),
             0,
         ),
     )
@@ -107,6 +119,12 @@ class HomeViewModel @Inject constructor(
     private data class DeviceState(
         val folderNames: Map<String, String>,
         val readiness: List<ReadinessItem>,
+        val run: RunState,
+    )
+
+    private data class RunState(
+        val ui: ImmediateRunUi = ImmediateRunUi.Idle,
+        val pendingMessage: String? = null,
     )
 
     /**
@@ -127,6 +145,44 @@ class HomeViewModel @Inject constructor(
 
     init {
         loadFolderNames()
+        viewModelScope.launch {
+            syncTrigger.immediateRunState.collect(::onRunState)
+        }
+    }
+
+    /**
+     * The first emission is the baseline: a run that finished before this
+     * screen opened must not be announced again.
+     */
+    private fun onRunState(state: ImmediateRunState) {
+        val isBaseline = !hasBaseline
+        hasBaseline = true
+        when (state) {
+            ImmediateRunState.Idle -> setRun(ImmediateRunUi.Idle)
+            is ImmediateRunState.Running ->
+                setRun(ImmediateRunUi.Running(isRetrying = state.isRetrying))
+            is ImmediateRunState.Finished -> {
+                if (isBaseline) {
+                    handledRunIds += state.runId
+                }
+                if (handledRunIds.add(state.runId)) {
+                    runState.update {
+                        it.copy(ui = ImmediateRunUi.Idle, pendingMessage = state.outcome.toMessage())
+                    }
+                    startingTimeout?.cancel()
+                }
+            }
+        }
+    }
+
+    private fun setRun(ui: ImmediateRunUi) {
+        startingTimeout?.cancel()
+        runState.update { it.copy(ui = ui) }
+    }
+
+    /** The screen calls this once it has shown the pending outcome. */
+    fun consumeOutcomeMessage() {
+        runState.update { it.copy(pendingMessage = null) }
     }
 
     fun refreshPermissions() {
@@ -150,7 +206,26 @@ class HomeViewModel @Inject constructor(
     }
 
     fun syncNow() {
+        val current = runState.value.ui
+        // Re-enqueueing replaces (cancels) the run in flight, so only a run
+        // that is waiting to retry may be restarted.
+        if (current == ImmediateRunUi.Starting || current == ImmediateRunUi.Running(false)) {
+            return
+        }
+        runState.update { it.copy(ui = ImmediateRunUi.Starting) }
         syncTrigger.syncNow()
+        // Safety net: never leave the button disabled if no state arrives.
+        startingTimeout?.cancel()
+        startingTimeout = viewModelScope.launch {
+            delay(STARTING_TIMEOUT_MILLIS)
+            runState.update {
+                if (it.ui == ImmediateRunUi.Starting) {
+                    it.copy(ui = ImmediateRunUi.Idle)
+                } else {
+                    it
+                }
+            }
+        }
     }
 
     @Suppress("LongParameterList") // one parameter per observed source
@@ -177,6 +252,8 @@ class HomeViewModel @Inject constructor(
             isSyncing = count(AssetState.UPLOADING) > 0,
             backedUpFolderSummary = folderSummary(settings, device.folderNames),
             readiness = device.readiness,
+            immediateRun = device.run.ui,
+            outcomeMessage = device.run.pendingMessage,
             wifiRequirement = settings.wifiRequirement,
             largeFileThresholdMb = settings.largeFileThresholdMb,
             uploadDelayMinutes = settings.uploadDelayMinutes,
@@ -225,6 +302,7 @@ class HomeViewModel @Inject constructor(
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
+        const val STARTING_TIMEOUT_MILLIS = 10_000L
         const val MAX_NAMED_FOLDERS = 3
     }
 }
