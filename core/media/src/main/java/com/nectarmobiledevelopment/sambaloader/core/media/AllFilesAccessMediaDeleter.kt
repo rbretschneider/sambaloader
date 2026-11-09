@@ -2,6 +2,7 @@ package com.nectarmobiledevelopment.sambaloader.core.media
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -18,7 +19,7 @@ class AllFilesAccessMediaDeleter @Inject constructor(
 ) : MediaDeleter {
 
     override fun canDeleteSilently(): Boolean {
-        return Environment.isExternalStorageManager()
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()
     }
 
     // Both exceptions map to the boolean contract; nothing to log or rethrow.

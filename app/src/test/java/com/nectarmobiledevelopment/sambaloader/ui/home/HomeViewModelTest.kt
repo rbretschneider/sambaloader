@@ -21,7 +21,11 @@ import com.nectarmobiledevelopment.sambaloader.core.testing.data.FakeSecureKeyVa
 import com.nectarmobiledevelopment.sambaloader.core.testing.sync.FakeSyncTrigger
 import com.nectarmobiledevelopment.sambaloader.core.testing.system.FakeSystemReadinessChecker
 import kotlinx.coroutines.Dispatchers
+import com.nectarmobiledevelopment.sambaloader.sync.ImmediateRunOutcome
+import com.nectarmobiledevelopment.sambaloader.sync.ImmediateRunState
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -52,6 +56,10 @@ class HomeViewModelTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         db = Room.inMemoryDatabaseBuilder(context, SambaloaderDatabase::class.java)
             .allowMainThreadQueries()
+            // Keep Room emissions on the test scheduler so virtual time
+            // cannot expire Starting while a real query thread is pending.
+            .setQueryExecutor { it.run() }
+            .setTransactionExecutor { it.run() }
             .build()
         assets = AssetRepository(db.assetDao())
         val store = FakeSecureKeyValueStore()
@@ -332,5 +340,226 @@ class HomeViewModelTest {
         // fails the test rather than passing it by accident.
         val state = model.uiState.first { !it.hasCriticalReadinessProblem }
         assertFalse(state.hasCriticalReadinessProblem)
+    }
+
+    private fun finished(id: String, outcome: ImmediateRunOutcome) =
+        ImmediateRunState.Finished(id, outcome)
+
+    @Test
+    fun `tapping back up now is acknowledged immediately`() = runTest {
+        enroll()
+        val model = viewModel()
+        assertFalse(model.uiState.first().isRunInProgress)
+
+        model.syncNow()
+
+        val state = model.uiState.first { it.isRunInProgress }
+        assertEquals(ImmediateRunUi.Starting, state.immediateRun)
+        assertEquals("Backing up…", state.statusMessage)
+    }
+
+    @Test
+    fun `a running forced run shows backing up even with no asset uploading`() = runTest {
+        enroll()
+        val model = viewModel()
+        syncTrigger.runState.value = ImmediateRunState.Running("a")
+
+        val state = model.uiState.first { it.immediateRun is ImmediateRunUi.Running }
+
+        assertFalse(state.isSyncing)
+        assertTrue(state.isRunInProgress)
+        assertEquals("Backing up…", state.statusMessage)
+    }
+
+    @Test
+    fun `a second tap while starting does not enqueue another run`() {
+        enroll()
+        val model = viewModel()
+
+        model.syncNow()
+        model.syncNow()
+
+        assertEquals(1, syncTrigger.syncNowCount)
+    }
+
+    @Test
+    fun `a second tap while running does not enqueue another run`() {
+        enroll()
+        val model = viewModel()
+        model.syncNow()
+        syncTrigger.runState.value = ImmediateRunState.Running("a")
+
+        model.syncNow()
+
+        assertEquals(1, syncTrigger.syncNowCount)
+    }
+
+    @Test
+    fun `a tap while the run is waiting to retry restarts it`() {
+        enroll()
+        val model = viewModel()
+        syncTrigger.runState.value = ImmediateRunState.Running("a", isRetrying = true)
+
+        model.syncNow()
+
+        assertEquals(1, syncTrigger.syncNowCount)
+    }
+
+    @Test
+    fun `a retrying run says so and leaves the button enabled`() = runTest {
+        enroll()
+        val model = viewModel()
+        syncTrigger.runState.value = ImmediateRunState.Running("a", isRetrying = true)
+
+        val state = model.uiState.first { it.immediateRun is ImmediateRunUi.Running }
+
+        assertFalse(state.isRunInProgress)
+        assertEquals("Backup hit a problem; retrying automatically", state.statusMessage)
+    }
+
+    private suspend fun messageFor(outcome: ImmediateRunOutcome): String? {
+        enroll()
+        val model = viewModel()
+        model.syncNow()
+        syncTrigger.runState.value = ImmediateRunState.Running("a")
+        syncTrigger.runState.value = finished("a", outcome)
+        val state = model.uiState.first { it.outcomeMessage != null && !it.isRunInProgress }
+        assertEquals(ImmediateRunUi.Idle, state.immediateRun)
+        return state.outcomeMessage
+    }
+
+    @Test
+    fun `a finished run with uploads says how many`() = runTest {
+        assertEquals("Uploaded 3 files", messageFor(ImmediateRunOutcome.Uploaded(3)))
+    }
+
+    @Test
+    fun `a single upload is not pluralised`() = runTest {
+        assertEquals("Uploaded 1 file", messageFor(ImmediateRunOutcome.Uploaded(1)))
+    }
+
+    @Test
+    fun `a finished run with nothing new says everything is backed up`() = runTest {
+        assertEquals(
+            "Everything is already backed up",
+            messageFor(ImmediateRunOutcome.NothingToUpload),
+        )
+    }
+
+    @Test
+    fun `files held by the size cap are reported as waiting for Wi-Fi`() = runTest {
+        assertEquals(
+            "2 files waiting for Wi-Fi (metered data size limit)",
+            messageFor(ImmediateRunOutcome.HeldForWifi(count = 2, uploaded = 0)),
+        )
+    }
+
+    @Test
+    fun `a partly uploaded run still reports the held files`() = runTest {
+        assertEquals(
+            "Uploaded 1 file. 1 file waiting for Wi-Fi (metered data size limit)",
+            messageFor(ImmediateRunOutcome.HeldForWifi(count = 1, uploaded = 1)),
+        )
+    }
+
+    @Test
+    fun `an unreachable server is named as the cause`() = runTest {
+        assertEquals(
+            "Backup could not complete: the server could not be reached",
+            messageFor(ImmediateRunOutcome.ServerUnreachable),
+        )
+    }
+
+    @Test
+    fun `a failed run says the backup could not complete and the button returns`() = runTest {
+        assertEquals(
+            "Backup could not complete. Try again later.",
+            messageFor(ImmediateRunOutcome.Failed),
+        )
+    }
+
+    @Test
+    fun `the button is usable again after a run finishes`() = runTest {
+        enroll()
+        val model = viewModel()
+        model.syncNow()
+        syncTrigger.runState.value = ImmediateRunState.Running("a")
+        syncTrigger.runState.value = finished("a", ImmediateRunOutcome.Failed)
+        model.uiState.first { it.outcomeMessage != null && !it.isRunInProgress }
+
+        model.syncNow()
+
+        assertEquals(2, syncTrigger.syncNowCount)
+    }
+
+    @Test
+    fun `a stale baseline emission after a tap keeps the tap guarded`() = runTest {
+        enroll()
+        Dispatchers.setMain(kotlinx.coroutines.test.StandardTestDispatcher(testScheduler))
+        syncTrigger.runState.value = finished("old", ImmediateRunOutcome.Uploaded(9))
+        val model = viewModel()
+        model.syncNow()
+        runCurrent()
+
+        model.syncNow()
+
+        val state = model.uiState.first { it.isRunInProgress }
+        assertEquals(ImmediateRunUi.Starting, state.immediateRun)
+        assertNull(state.outcomeMessage)
+        assertEquals(1, syncTrigger.syncNowCount)
+    }
+
+    @Test
+    fun `a run that finished before the screen opened is not announced`() = runTest {
+        enroll()
+        syncTrigger.runState.value = finished("old", ImmediateRunOutcome.Uploaded(9))
+
+        val model = viewModel()
+        val state = model.uiState.first { it.isEnrolled }
+
+        assertNull(state.outcomeMessage)
+    }
+
+    @Test
+    fun `an outcome is delivered once and gone after it is consumed`() = runTest {
+        enroll()
+        val model = viewModel()
+        model.syncNow()
+        syncTrigger.runState.value = finished("a", ImmediateRunOutcome.NothingToUpload)
+        val delivered = model.uiState.first { it.outcomeMessage != null }
+        assertEquals("Everything is already backed up", delivered.outcomeMessage)
+
+        model.consumeOutcomeMessage()
+        // The same finished run re-delivered must not announce again.
+        syncTrigger.runState.value = finished("a", ImmediateRunOutcome.NothingToUpload)
+
+        assertNull(model.uiState.first { it.outcomeMessage == null }.outcomeMessage)
+    }
+
+    @Test
+    fun `a cancelled run clears the starting state`() = runTest {
+        enroll()
+        val model = viewModel()
+        model.syncNow()
+        syncTrigger.runState.value = ImmediateRunState.Running("a")
+
+        syncTrigger.runState.value = ImmediateRunState.Idle
+
+        assertFalse(model.uiState.first { !it.isRunInProgress }.isRunInProgress)
+    }
+
+    @Test
+    fun `starting never leaves the button disabled forever`() = runTest {
+        enroll()
+        Dispatchers.setMain(kotlinx.coroutines.test.StandardTestDispatcher(testScheduler))
+        val model = viewModel()
+        model.syncNow()
+        runCurrent()
+        assertTrue(model.uiState.first { it.isRunInProgress }.isRunInProgress)
+
+        advanceTimeBy(11_000)
+        runCurrent()
+
+        assertFalse(model.uiState.first { !it.isRunInProgress }.isRunInProgress)
     }
 }

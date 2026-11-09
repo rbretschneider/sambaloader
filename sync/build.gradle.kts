@@ -37,7 +37,7 @@ dependencies {
     implementation(project(":core:media"))
     implementation(project(":core:crypto"))
     implementation(project(":core:network"))
-    implementation(libs.kotlinx.coroutines.core)
+    api(libs.kotlinx.coroutines.core)
     implementation(libs.work.runtime.ktx)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

@@ -41,6 +41,9 @@ class SyncRunner @Inject constructor(
         var rounds = 0
         var nextHeldCaptureTime: Long? = null
         var waitingForWifi = 0
+        var wasOffline = false
+        var failedRetryable = 0
+        var failedPermanent = 0
 
         while (rounds < maxRounds && timeProvider.nowEpochMillis() < deadline) {
             rounds++
@@ -51,6 +54,9 @@ class SyncRunner @Inject constructor(
             skipped += summary.skippedRemoteHas
             nextHeldCaptureTime = summary.nextHeldCaptureTimeEpochSeconds
             waitingForWifi = summary.waitingForWifi
+            wasOffline = summary.wasOffline
+            failedRetryable = summary.failedRetryable
+            failedPermanent += summary.failedPermanent
 
             val madeProgress = hashedThisRound > 0 ||
                 summary.uploaded > 0 ||
@@ -59,13 +65,15 @@ class SyncRunner @Inject constructor(
                 // Nothing left to do, or the server is unreachable —
                 // either way, stop burning battery this run.
                 return DrainSummary(
-                    hashed, uploaded, skipped, rounds, true, nextHeldCaptureTime, waitingForWifi,
+                    hashed, uploaded, skipped, rounds, true, nextHeldCaptureTime, waitingForWifi, wasOffline,
+                    failedRetryable, failedPermanent,
                 )
             }
         }
         // Budget spent with work still pending: WorkManager runs us again.
         return DrainSummary(
-            hashed, uploaded, skipped, rounds, false, nextHeldCaptureTime, waitingForWifi,
+            hashed, uploaded, skipped, rounds, false, nextHeldCaptureTime, waitingForWifi, wasOffline,
+                    failedRetryable, failedPermanent,
         )
     }
 
@@ -89,4 +97,10 @@ data class DrainSummary(
     val nextHeldCaptureTimeEpochSeconds: Long? = null,
     /** Files held back because they are too large for a metered connection. */
     val waitingForWifi: Int = 0,
+    /** The last upload pass stopped because the server was unreachable. */
+    val wasOffline: Boolean = false,
+    /** Files whose last attempt failed but will be retried (last round only). */
+    val failedRetryable: Int = 0,
+    /** Files rejected for good by the server, across all rounds. */
+    val failedPermanent: Int = 0,
 )

@@ -28,7 +28,19 @@ data class HomeUiState(
     val syncHealth: SyncHealth,
     /** OS permissions and exemptions, checked every time the screen resumes. */
     val readiness: List<ReadinessItem> = emptyList(),
+    /** State of the latest "Back up now" run. */
+    val immediateRun: ImmediateRunUi = ImmediateRunUi.Idle,
+    /** Result of a finished run, shown once and then consumed. */
+    val outcomeMessage: String? = null,
 ) {
+
+    /** Disables the button; a retrying run stays tappable so it can be restarted. */
+    val isRunInProgress: Boolean
+        get() = immediateRun == ImmediateRunUi.Starting ||
+            immediateRun == ImmediateRunUi.Running(isRetrying = false)
+
+    private val isRetryingRun: Boolean
+        get() = immediateRun == ImmediateRunUi.Running(isRetrying = true)
 
     /** Rows the user should act on, worst first. */
     val readinessNeedingAttention: List<ReadinessItem>
@@ -65,7 +77,8 @@ data class HomeUiState(
     val statusMessage: String
         get() = when {
             !isEnrolled -> "Not paired with a server yet"
-            isSyncing -> "Backing up…"
+            isSyncing || isRunInProgress -> "Backing up…"
+            isRetryingRun -> "Backup hit a problem; retrying automatically"
             pendingCount > 0 -> "$pendingCount item(s) waiting"
             uploadedCount > 0 -> "Everything backed up"
             else -> "Nothing to back up yet"

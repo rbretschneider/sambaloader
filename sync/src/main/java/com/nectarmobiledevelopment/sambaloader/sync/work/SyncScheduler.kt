@@ -8,13 +8,19 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRepository
+import com.nectarmobiledevelopment.sambaloader.sync.ImmediateRunOutcome
+import com.nectarmobiledevelopment.sambaloader.sync.ImmediateRunState
 import com.nectarmobiledevelopment.sambaloader.sync.SyncTrigger
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlin.time.Duration
 
 /**
@@ -33,6 +39,11 @@ class SyncScheduler @Inject constructor(
     private val workManager: WorkManager,
     private val settingsRepository: SyncSettingsRepository,
 ) : SyncTrigger {
+
+    override val immediateRunState: Flow<ImmediateRunState> =
+        workManager.getWorkInfosForUniqueWorkFlow(IMMEDIATE_WORK_NAME)
+            .map { infos -> toRunState(infos.firstOrNull()) }
+            .distinctUntilChanged()
 
     /** App-startup arming: keeps an already-armed trigger untouched. */
     fun armContentTrigger() {
@@ -210,6 +221,34 @@ class SyncScheduler @Inject constructor(
     }
 
     companion object {
+        /** Pure so it can be tested against every [WorkInfo.State]. */
+        internal fun toRunState(info: WorkInfo?): ImmediateRunState {
+            if (info == null) {
+                return ImmediateRunState.Idle
+            }
+            val id = info.id.toString()
+            return when (info.state) {
+                // runAttemptCount is already 1 while the first attempt runs,
+                // so only an ENQUEUED run with attempts is waiting to retry.
+                WorkInfo.State.ENQUEUED ->
+                    ImmediateRunState.Running(id, isRetrying = info.runAttemptCount > 0)
+                WorkInfo.State.RUNNING,
+                WorkInfo.State.BLOCKED,
+                -> ImmediateRunState.Running(id, isRetrying = false)
+                WorkInfo.State.SUCCEEDED -> ImmediateRunState.Finished(
+                    id,
+                    ImmediateRunOutcomeCodec.fromData(info.outputData)
+                        ?: ImmediateRunOutcome.NothingToUpload,
+                )
+                WorkInfo.State.FAILED -> ImmediateRunState.Finished(
+                    id,
+                    ImmediateRunOutcomeCodec.fromData(info.outputData)
+                        ?: ImmediateRunOutcome.Failed,
+                )
+                WorkInfo.State.CANCELLED -> ImmediateRunState.Idle
+            }
+        }
+
         const val CONTENT_TRIGGER_WORK_NAME = "media-content-trigger"
         const val RECONCILIATION_WORK_NAME = "media-reconciliation"
         const val IMMEDIATE_WORK_NAME = "media-immediate-scan"

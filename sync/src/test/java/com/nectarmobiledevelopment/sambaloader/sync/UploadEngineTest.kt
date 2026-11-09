@@ -182,6 +182,22 @@ class UploadEngineTest {
     }
 
     @Test
+    fun `an unreachable server is reported as offline`() = runTest {
+        seedHashed(1)
+        transport.nextUploadResult = { TransportResult.Failure(TransportError.Timeout) }
+
+        assertTrue(engine.uploadPending().wasOffline)
+    }
+
+    @Test
+    fun `a server error is not reported as offline`() = runTest {
+        seedHashed(1)
+        transport.nextUploadResult = { TransportResult.Failure(TransportError.HttpError(507)) }
+
+        assertFalse(engine.uploadPending().wasOffline)
+    }
+
+    @Test
     fun `an unreachable server never exhausts the retry budget`() = runTest {
         seedHashed(1)
         transport.nextUploadResult = { TransportResult.Failure(TransportError.Timeout) }

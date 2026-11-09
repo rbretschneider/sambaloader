@@ -15,4 +15,6 @@ data class UploadSummary(
     val nextHeldCaptureTimeEpochSeconds: Long? = null,
     /** Eligible files too large to send over the current metered connection. */
     val waitingForWifi: Int = 0,
+    /** The pass stopped because the server could not be reached. */
+    val wasOffline: Boolean = false,
 )
