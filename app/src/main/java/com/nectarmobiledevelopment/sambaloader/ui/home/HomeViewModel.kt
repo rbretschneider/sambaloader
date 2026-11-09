@@ -304,13 +304,13 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private fun hostOf(enrollment: Enrollment): String {
-        return runCatching { URI(enrollment.serverUrl).host }.getOrNull() ?: enrollment.serverUrl
-    }
-
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
         const val STARTING_TIMEOUT_MILLIS = 10_000L
         const val MAX_NAMED_FOLDERS = 3
     }
+}
+
+private fun hostOf(enrollment: Enrollment): String {
+    return runCatching { URI(enrollment.serverUrl).host }.getOrNull() ?: enrollment.serverUrl
 }

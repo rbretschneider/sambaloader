@@ -56,6 +56,10 @@ class HomeViewModelTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         db = Room.inMemoryDatabaseBuilder(context, SambaloaderDatabase::class.java)
             .allowMainThreadQueries()
+            // Keep Room emissions on the test scheduler so virtual time
+            // cannot expire Starting while a real query thread is pending.
+            .setQueryExecutor { it.run() }
+            .setTransactionExecutor { it.run() }
             .build()
         assets = AssetRepository(db.assetDao())
         val store = FakeSecureKeyValueStore()
