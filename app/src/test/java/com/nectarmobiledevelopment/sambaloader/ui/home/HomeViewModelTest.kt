@@ -476,11 +476,32 @@ class HomeViewModelTest {
 
     @Test
     fun `the button is usable again after a run finishes`() = runTest {
-        messageFor(ImmediateRunOutcome.Failed)
+        enroll()
         val model = viewModel()
+        model.syncNow()
+        syncTrigger.runState.value = ImmediateRunState.Running("a")
+        syncTrigger.runState.value = finished("a", ImmediateRunOutcome.Failed)
+        model.uiState.first { it.outcomeMessage != null && !it.isRunInProgress }
 
         model.syncNow()
 
+        assertEquals(2, syncTrigger.syncNowCount)
+    }
+
+    @Test
+    fun `a stale baseline emission after a tap keeps the tap guarded`() = runTest {
+        enroll()
+        Dispatchers.setMain(kotlinx.coroutines.test.StandardTestDispatcher(testScheduler))
+        syncTrigger.runState.value = finished("old", ImmediateRunOutcome.Uploaded(9))
+        val model = viewModel()
+        model.syncNow()
+        runCurrent()
+
+        model.syncNow()
+
+        val state = model.uiState.first { it.isRunInProgress }
+        assertEquals(ImmediateRunUi.Starting, state.immediateRun)
+        assertNull(state.outcomeMessage)
         assertEquals(1, syncTrigger.syncNowCount)
     }
 

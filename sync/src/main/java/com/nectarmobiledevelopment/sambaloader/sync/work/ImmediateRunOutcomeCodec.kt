@@ -25,6 +25,7 @@ internal object ImmediateRunOutcomeCodec {
                 ImmediateRunOutcome.HeldForWifi(summary.waitingForWifi, summary.uploaded)
             summary.uploaded > 0 -> ImmediateRunOutcome.Uploaded(summary.uploaded)
             summary.wasOffline -> ImmediateRunOutcome.ServerUnreachable
+            summary.failedRetryable + summary.failedPermanent > 0 -> ImmediateRunOutcome.Failed
             else -> ImmediateRunOutcome.NothingToUpload
         }
     }

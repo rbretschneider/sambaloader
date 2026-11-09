@@ -46,6 +46,7 @@ class MediaSyncWorkerTest {
     private val settings = SyncSettingsRepository(FakeSecureKeyValueStore())
     private var scannerThrows = false
     private var serverUnreachable = false
+    private var httpFailure: Int? = null
     private var isMetered = false
 
     @Before
@@ -73,6 +74,13 @@ class MediaSyncWorkerTest {
                     mediaSource = media,
                     transportProvider = {
                         com.nectarmobiledevelopment.sambaloader.core.testing.transport.FakeTransport().also {
+                            httpFailure?.let { code ->
+                                it.nextUploadResult = {
+                                    com.nectarmobiledevelopment.sambaloader.core.network.api.TransportResult.Failure(
+                                        com.nectarmobiledevelopment.sambaloader.core.network.api.TransportError.HttpError(code),
+                                    )
+                                }
+                            }
                             if (serverUnreachable) {
                                 it.nextUploadResult = {
                                     com.nectarmobiledevelopment.sambaloader.core.network.api.TransportResult.Failure(
@@ -290,6 +298,26 @@ class MediaSyncWorkerTest {
         val outcome = ImmediateRunOutcomeCodec.fromData(runImmediateScan().outputData)
 
         assertEquals(ImmediateRunOutcome.ServerUnreachable, outcome)
+    }
+
+    @Test
+    fun `a forced run the server rejects does not claim everything is backed up`() = runBlocking<Unit> {
+        httpFailure = 400
+        media.addItem(1, dateAddedEpochSeconds = 100)
+
+        val outcome = ImmediateRunOutcomeCodec.fromData(runImmediateScan().outputData)
+
+        assertEquals(ImmediateRunOutcome.Failed, outcome)
+    }
+
+    @Test
+    fun `a forced run hitting a retryable server error reports failure`() = runBlocking<Unit> {
+        httpFailure = 507
+        media.addItem(1, dateAddedEpochSeconds = 100)
+
+        val outcome = ImmediateRunOutcomeCodec.fromData(runImmediateScan().outputData)
+
+        assertEquals(ImmediateRunOutcome.Failed, outcome)
     }
 
     @Test

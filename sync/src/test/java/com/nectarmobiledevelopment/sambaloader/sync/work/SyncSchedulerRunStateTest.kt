@@ -42,6 +42,14 @@ class SyncSchedulerRunStateTest {
     }
 
     @Test
+    fun `first running attempt is not retrying even though the attempt count is one`() {
+        assertEquals(
+            ImmediateRunState.Running(id.toString(), isRetrying = false),
+            SyncScheduler.toRunState(info(WorkInfo.State.RUNNING, attempts = 1)),
+        )
+    }
+
+    @Test
     fun `succeeded work carries its outcome`() {
         val output = ImmediateRunOutcomeCodec.toData(ImmediateRunOutcome.Uploaded(4))
 

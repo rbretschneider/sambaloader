@@ -228,10 +228,13 @@ class SyncScheduler @Inject constructor(
             }
             val id = info.id.toString()
             return when (info.state) {
-                WorkInfo.State.ENQUEUED,
+                // runAttemptCount is already 1 while the first attempt runs,
+                // so only an ENQUEUED run with attempts is waiting to retry.
+                WorkInfo.State.ENQUEUED ->
+                    ImmediateRunState.Running(id, isRetrying = info.runAttemptCount > 0)
                 WorkInfo.State.RUNNING,
                 WorkInfo.State.BLOCKED,
-                -> ImmediateRunState.Running(id, isRetrying = info.runAttemptCount > 0)
+                -> ImmediateRunState.Running(id, isRetrying = false)
                 WorkInfo.State.SUCCEEDED -> ImmediateRunState.Finished(
                     id,
                     ImmediateRunOutcomeCodec.fromData(info.outputData)

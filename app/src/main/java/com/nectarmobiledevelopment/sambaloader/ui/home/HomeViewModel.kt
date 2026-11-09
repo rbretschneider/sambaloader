@@ -158,12 +158,20 @@ class HomeViewModel @Inject constructor(
         val isBaseline = !hasBaseline
         hasBaseline = true
         when (state) {
-            ImmediateRunState.Idle -> setRun(ImmediateRunUi.Idle)
+            // The database flow can deliver its Idle/old-run baseline after a
+            // tap; that must not erase the optimistic Starting state. The
+            // timeout still clears it if no run ever shows up.
+            ImmediateRunState.Idle -> if (runState.value.ui != ImmediateRunUi.Starting) {
+                setRun(ImmediateRunUi.Idle)
+            }
             is ImmediateRunState.Running ->
                 setRun(ImmediateRunUi.Running(isRetrying = state.isRetrying))
             is ImmediateRunState.Finished -> {
                 if (isBaseline) {
                     handledRunIds += state.runId
+                }
+                if (isBaseline && runState.value.ui == ImmediateRunUi.Starting) {
+                    return
                 }
                 if (handledRunIds.add(state.runId)) {
                     runState.update {
