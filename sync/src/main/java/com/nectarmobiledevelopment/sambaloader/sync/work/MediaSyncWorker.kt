@@ -8,6 +8,7 @@ import com.nectarmobiledevelopment.sambaloader.core.data.settings.SyncSettingsRe
 import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
 import com.nectarmobiledevelopment.sambaloader.sync.AssetScanner
 import com.nectarmobiledevelopment.sambaloader.sync.DrainSummary
+import com.nectarmobiledevelopment.sambaloader.sync.ImmediateRunOutcome
 import com.nectarmobiledevelopment.sambaloader.sync.SyncRunner
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.milliseconds
@@ -35,11 +36,11 @@ class MediaSyncWorker @AssistedInject constructor(
 ) : CoroutineWorker(context, parameters) {
 
     override suspend fun doWork(): Result {
+        val isForced = inputData.getBoolean(KEY_FORCE, false)
         return try {
             scanner.scan()
             // Drains repeatedly, not just one batch: a first-run backfill
             // must not need hundreds of scheduled runs to finish.
-            val isForced = inputData.getBoolean(KEY_FORCE, false)
             val summary = runner.drain(force = isForced) { done, total ->
                 promoteToForeground(remaining = total - done)
             }
@@ -47,14 +48,20 @@ class MediaSyncWorker @AssistedInject constructor(
             if (summary.waitingForWifi > 0) {
                 scheduler.scheduleWifiRunForLargeFiles()
             }
-            Result.success()
+            if (isForced) {
+                Result.success(
+                    ImmediateRunOutcomeCodec.toData(ImmediateRunOutcomeCodec.fromSummary(summary)),
+                )
+            } else {
+                Result.success()
+            }
             // Worker boundary: any failure becomes retry/failure — a crash
             // here would take down scheduled work entirely.
         } catch (@Suppress("TooGenericExceptionCaught") failure: Exception) {
             if (runAttemptCount < MAX_RUN_ATTEMPTS) {
                 Result.retry()
             } else {
-                Result.failure()
+                Result.failure(ImmediateRunOutcomeCodec.toData(ImmediateRunOutcome.Failed))
             }
         } finally {
             // ALWAYS re-arm, even on failure — a broken run must not stop

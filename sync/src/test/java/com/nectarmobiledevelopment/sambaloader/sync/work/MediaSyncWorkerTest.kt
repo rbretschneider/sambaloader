@@ -21,10 +21,13 @@ import com.nectarmobiledevelopment.sambaloader.core.data.time.TimeProvider
 import com.nectarmobiledevelopment.sambaloader.core.testing.data.FakeSecureKeyValueStore
 import com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeMediaSource
 import com.nectarmobiledevelopment.sambaloader.sync.AssetHasher
+import com.nectarmobiledevelopment.sambaloader.core.data.settings.WifiRequirement
 import com.nectarmobiledevelopment.sambaloader.sync.AssetScanner
+import com.nectarmobiledevelopment.sambaloader.sync.ImmediateRunOutcome
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -42,6 +45,8 @@ class MediaSyncWorkerTest {
     private lateinit var scheduler: SyncScheduler
     private val settings = SyncSettingsRepository(FakeSecureKeyValueStore())
     private var scannerThrows = false
+    private var serverUnreachable = false
+    private var isMetered = false
 
     @Before
     fun setUp() {
@@ -67,12 +72,20 @@ class MediaSyncWorkerTest {
                     assetRepository = assets,
                     mediaSource = media,
                     transportProvider = {
-                        com.nectarmobiledevelopment.sambaloader.core.testing.transport.FakeTransport()
+                        com.nectarmobiledevelopment.sambaloader.core.testing.transport.FakeTransport().also {
+                            if (serverUnreachable) {
+                                it.nextUploadResult = {
+                                    com.nectarmobiledevelopment.sambaloader.core.network.api.TransportResult.Failure(
+                                        com.nectarmobiledevelopment.sambaloader.core.network.api.TransportError.Timeout,
+                                    )
+                                }
+                            }
+                        }
                     },
                     timeProvider = clock,
                     syncHealthRepository = SyncHealthRepository(FakeSecureKeyValueStore(), clock),
                     settingsRepository = settings,
-                    networkConditions = { false },
+                    networkConditions = { isMetered },
                     sharedInbox = com.nectarmobiledevelopment.sambaloader.core.testing.media.FakeSharedInbox(),
                 )
                 val runner = com.nectarmobiledevelopment.sambaloader.sync.SyncRunner(hasher, uploadEngine, clock)
@@ -228,6 +241,71 @@ class MediaSyncWorkerTest {
         awaitTerminal(info.id)
 
         assertEquals(AssetState.UPLOADED, assets.byId(1)!!.state)
+    }
+
+    private fun runImmediateScan(): WorkInfo {
+        scheduler.triggerImmediateScan()
+        val info = workManager
+            .getWorkInfosForUniqueWork(SyncScheduler.IMMEDIATE_WORK_NAME)
+            .get()
+            .single()
+        awaitTerminal(info.id)
+        return workManager.getWorkInfoById(info.id).get()!!
+    }
+
+    @Test
+    fun `a forced run reports how many files it uploaded`() = runBlocking<Unit> {
+        media.addItem(1, dateAddedEpochSeconds = 100)
+        media.addItem(2, dateAddedEpochSeconds = 101)
+
+        val outcome = ImmediateRunOutcomeCodec.fromData(runImmediateScan().outputData)
+
+        assertEquals(ImmediateRunOutcome.Uploaded(2), outcome)
+    }
+
+    @Test
+    fun `a forced run with nothing new reports nothing to upload`() {
+        val outcome = ImmediateRunOutcomeCodec.fromData(runImmediateScan().outputData)
+
+        assertEquals(ImmediateRunOutcome.NothingToUpload, outcome)
+    }
+
+    @Test
+    fun `a forced run reports files held back by the metered size cap`() = runBlocking<Unit> {
+        settings.setWifiRequirement(WifiRequirement.FOR_LARGE_FILES)
+        settings.setLargeFileThresholdMb(2)
+        isMetered = true
+        media.addItem(1, content = ByteArray(3 * 1024 * 1024) { 1 })
+
+        val outcome = ImmediateRunOutcomeCodec.fromData(runImmediateScan().outputData)
+
+        assertEquals(ImmediateRunOutcome.HeldForWifi(count = 1, uploaded = 0), outcome)
+    }
+
+    @Test
+    fun `a forced run against an unreachable server reports it`() = runBlocking<Unit> {
+        serverUnreachable = true
+        media.addItem(1, dateAddedEpochSeconds = 100)
+
+        val outcome = ImmediateRunOutcomeCodec.fromData(runImmediateScan().outputData)
+
+        assertEquals(ImmediateRunOutcome.ServerUnreachable, outcome)
+    }
+
+    @Test
+    fun `a scheduled run carries no outcome data`() = runBlocking<Unit> {
+        media.addItem(1, dateAddedEpochSeconds = 100)
+        scheduler.armContentTrigger()
+        val info = workManager
+            .getWorkInfosForUniqueWork(SyncScheduler.CONTENT_TRIGGER_WORK_NAME)
+            .get()
+            .single()
+        WorkManagerTestInitHelper.getTestDriver(context)!!.setAllConstraintsMet(info.id)
+        awaitTerminal(info.id)
+
+        val finished = workManager.getWorkInfoById(info.id).get()!!
+
+        assertNull(ImmediateRunOutcomeCodec.fromData(finished.outputData))
     }
 
     @Test

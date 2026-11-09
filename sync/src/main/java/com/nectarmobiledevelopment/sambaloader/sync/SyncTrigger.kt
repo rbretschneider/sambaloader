@@ -1,10 +1,15 @@
 package com.nectarmobiledevelopment.sambaloader.sync
 
+import kotlinx.coroutines.flow.Flow
+
 /**
  * What the UI is allowed to ask of the scheduler. Keeps WorkManager out of
  * the view models (and out of their tests).
  */
 interface SyncTrigger {
+
+    /** State of the latest user-initiated run, for feedback on the button. */
+    val immediateRunState: Flow<ImmediateRunState>
 
     /**
      * User-initiated backup run: starts without waiting for scheduling
